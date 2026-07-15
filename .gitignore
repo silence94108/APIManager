@@ -1,0 +1,74 @@
+
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+.pnpm-store
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+/playwright-report
+/test-results
+/diagnostics-results
+
+# playwright-cli
+.playwright-cli/
+.playwright/
+.playwright-profiles/
+
+# misc
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+out/
+build/
+dist/
+
+# plasmo
+.plasmo
+
+# typescript
+.tsbuildinfo
+
+# 文档项目的依赖和构建产物
+/docs/
+
+# 其他可能的文档生成器特定忽略项 (例如 Docusaurus 的 build 目录)
+# /docs/build/
+
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+.output
+stats.html
+stats-*.json
+.wxt
+web-ext.config.ts
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+.env
+.env.*
+
+.claude
