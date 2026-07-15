@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/* ── Phosphor Console 设计 token ─────────────────────────
+   碳黑仪表底 + 磷光石灰信号色；数字一律等宽（tabular）。
+   语义：phos=活着/已签/有钱  amber=过期警示  signal=失败  */
+@theme {
+  --color-carbon: #0b0c0e;
+  --color-panel: #14161a;
+  --color-raised: #1b1e24;
+  --color-line: rgba(255, 255, 255, 0.07);
+  --color-ink: #e8eaed;
+  --color-ink-mute: #969da6;
+  --color-ink-faint: #5c636c;
+  --color-phos: #c8f542;
+  --color-phos-dim: #8fb32e;
+  --color-amber: #ffb224;
+  --color-signal: #ff5d5d;
+
+  --font-sans: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono",
+    ui-monospace, monospace;
+}
+
+:root {
+  --phos-glow: rgba(200, 245, 66, 0.55);
+  --phos-glow-dim: rgba(200, 245, 66, 0.25);
+}
+
+/* 浅色模式：纸面仪表变体（同一套语义 token，换纸白底与深绿信号色）。
+   必须在无条件 :root 之后声明，否则同特异性级联会被覆盖 */
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-carbon: #f4f5f2;
+    --color-panel: #ffffff;
+    --color-raised: #eceee8;
+    --color-line: rgba(0, 0, 0, 0.09);
+    --color-ink: #1a1c16;
+    --color-ink-mute: #5a5f52;
+    --color-ink-faint: #9aa08e;
+    --color-phos: #55830a;
+    --color-phos-dim: #7fa62e;
+    --color-amber: #b87700;
+    --color-signal: #c93a3a;
+    --phos-glow: rgba(85, 131, 10, 0.45);
+    --phos-glow-dim: rgba(85, 131, 10, 0.2);
+  }
+}
+
+body {
+  @apply bg-carbon text-ink font-sans antialiased;
+}
+
+/* 数字读数：等宽 + 表格数字，余额/统计一律挂这个类 */
+.readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* 磷光点呼吸（未签→已签的"活体"信号） */
+@keyframes phos-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 6px 0 var(--phos-glow);
+  }
+  50% {
+    opacity: 0.72;
+    box-shadow: 0 0 2px 0 var(--phos-glow-dim);
+  }
+}
+.dot-phos {
+  animation: phos-breathe 2.4s ease-in-out infinite;
+}
+
+/* 签到成功一次性脉冲 */
+@keyframes phos-pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--phos-glow);
+  }
+  100% {
+    box-shadow: 0 0 0 12px transparent;
+  }
+}
+.dot-pulse {
+  animation: phos-pulse 0.7s ease-out 1;
+}
+
+/* 面板打开时分组 stagger 淡入 */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise-in {
+  animation: rise-in 0.28s ease-out both;
+}

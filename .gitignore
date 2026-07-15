@@ -35,12 +35,7 @@ dist/
 # typescript
 .tsbuildinfo
 
-# 文档项目的依赖和构建产物
-/docs/
-
-# 其他可能的文档生成器特定忽略项 (例如 Docusaurus 的 build 目录)
-# /docs/build/
-
+# 文档目录需要提交（调研参考资料在 docs/）
 
 # Logs
 logs
