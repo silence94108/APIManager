@@ -7,7 +7,7 @@ import {
   saveTag,
 } from "@/storage/groupsTags";
 import { accountsItem, groupsItem, tagsItem } from "@/storage/items";
-import { Button, Dialog, EmptyState, Input, toast } from "@/ui/components";
+import { Button, ConfirmDialog, EmptyState, Input, toast } from "@/ui/components";
 import { useStorageItem } from "@/ui/hooks";
 
 export default function GroupsTagsPage() {
@@ -193,21 +193,16 @@ function EditableRow({
         ×
       </Button>
 
-      <Dialog open={confirming} onClose={() => setConfirming(false)} title={`删除「${name}」`}>
-        <p className="text-[13px] text-ink-mute">{deleteHint}</p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button onClick={() => setConfirming(false)}>取消</Button>
-          <Button
-            variant="danger"
-            onClick={async () => {
-              setConfirming(false);
-              await onDelete();
-            }}
-          >
-            删除
-          </Button>
-        </div>
-      </Dialog>
+      <ConfirmDialog
+        open={confirming}
+        title={`删除「${name}」`}
+        message={deleteHint}
+        onCancel={() => setConfirming(false)}
+        onConfirm={async () => {
+          setConfirming(false);
+          await onDelete();
+        }}
+      />
     </li>
   );
 }

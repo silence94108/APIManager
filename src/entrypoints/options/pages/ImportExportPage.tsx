@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import {
   executeAllApiHubImport,
   parseAllApiHubBackup,
@@ -19,9 +19,31 @@ function downloadJson(data: unknown, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-async function readJsonFile(file: File): Promise<unknown> {
-  const text = await file.text();
-  return JSON.parse(text);
+/** 隐藏 file input 管线：选 JSON → 解析 → 回调；解析/回调失败统一 toast */
+function useJsonFilePicker(onJson: (data: unknown) => void | Promise<void>): {
+  input: ReactNode;
+  open: () => void;
+} {
+  const ref = useRef<HTMLInputElement>(null);
+  const input = (
+    <input
+      ref={ref}
+      type="file"
+      accept="application/json"
+      className="hidden"
+      onChange={async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (!file) return;
+        try {
+          await onJson(JSON.parse(await file.text()));
+        } catch (err) {
+          toast(err instanceof Error ? err.message : "文件解析失败", "err");
+        }
+      }}
+    />
+  );
+  return { input, open: () => ref.current?.click() };
 }
 
 export default function ImportExportPage() {
@@ -34,18 +56,10 @@ export default function ImportExportPage() {
 }
 
 function AllApiHubImportCard() {
-  const fileRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [overwrite, setOverwrite] = useState(false);
   const [busy, setBusy] = useState(false);
-
-  async function pick(file: File) {
-    try {
-      setPreview(parseAllApiHubBackup(await readJsonFile(file)));
-    } catch (e) {
-      toast(e instanceof Error ? e.message : "文件解析失败", "err");
-    }
-  }
+  const picker = useJsonFilePicker((json) => setPreview(parseAllApiHubBackup(json)));
 
   async function run() {
     if (!preview) return;
@@ -82,18 +96,8 @@ function AllApiHubImportCard() {
         在 all-api-hub 的「导入导出」页导出备份 JSON，然后在这里导入。账号、Token、标签会一并迁移；分组需导入后自行归类。
       </p>
 
-      <input
-        ref={fileRef}
-        type="file"
-        accept="application/json"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void pick(f);
-          e.target.value = "";
-        }}
-      />
-      <Button variant="phos" onClick={() => fileRef.current?.click()}>
+      {picker.input}
+      <Button variant="phos" onClick={picker.open}>
         选择备份文件…
       </Button>
 
@@ -139,19 +143,13 @@ function AllApiHubImportCard() {
 }
 
 function OwnBackupCard() {
-  const fileRef = useRef<HTMLInputElement>(null);
   const modeRef = useRef<"replace" | "merge">("merge");
-
-  async function doImport(file: File) {
-    try {
-      const report = await importOwnBackup(await readJsonFile(file), modeRef.current);
-      toast(
-        `${modeRef.current === "replace" ? "覆盖" : "合并"}导入完成：账号 ${report.accounts} · 分组 ${report.groups} · 标签 ${report.tags}`,
-      );
-    } catch (e) {
-      toast(e instanceof Error ? e.message : "导入失败", "err");
-    }
-  }
+  const picker = useJsonFilePicker(async (json) => {
+    const report = await importOwnBackup(json, modeRef.current);
+    toast(
+      `${modeRef.current === "replace" ? "覆盖" : "合并"}导入完成：账号 ${report.accounts} · 分组 ${report.groups} · 标签 ${report.tags}`,
+    );
+  });
 
   return (
     <section className="rounded-lg border border-line bg-panel p-4">
@@ -160,17 +158,7 @@ function OwnBackupCard() {
         备份包含账号（含 Token）、分组、标签与签到设置——文件含敏感信息，请妥善保管。
       </p>
 
-      <input
-        ref={fileRef}
-        type="file"
-        accept="application/json"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void doImport(f);
-          e.target.value = "";
-        }}
-      />
+      {picker.input}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button
@@ -184,7 +172,7 @@ function OwnBackupCard() {
         <Button
           onClick={() => {
             modeRef.current = "merge";
-            fileRef.current?.click();
+            picker.open();
           }}
         >
           合并导入
@@ -193,7 +181,7 @@ function OwnBackupCard() {
           variant="danger"
           onClick={() => {
             modeRef.current = "replace";
-            fileRef.current?.click();
+            picker.open();
           }}
         >
           覆盖导入

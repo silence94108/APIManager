@@ -68,6 +68,4 @@ export const voapiV2Provider: CheckinProvider = {
       return failedFromError(e);
     }
   },
-
-  queryCheckedToday: queryVoapiCheckedToday,
 };

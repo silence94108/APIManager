@@ -1,4 +1,6 @@
 import { useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { isCheckedToday } from "@/checkin/helpers";
+import type { Account, CheckinResults } from "@/types";
 
 export function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
@@ -123,6 +125,47 @@ export function StatusDot({ status, pulse }: { status: DotStatus; pulse?: boolea
   );
 }
 
+/** account → 状态点的推导（disabled > expired > 今日签到态），popup 与 options 共用 */
+export function dotStatus(account: Account, results?: CheckinResults, today?: string): DotStatus {
+  if (account.disabled) return "disabled";
+  if (account.tokenState === "expired") return "expired";
+  if (results && today) {
+    const record = results[account.id];
+    if (isCheckedToday(record, today)) return "checked";
+    if (record?.date === today && record.status === "failed") return "failed";
+  }
+  return "unchecked";
+}
+
+/** 标签 chip（选中态磷光）——options 表单与 popup 筛选栏共用同一视觉语言 */
+export function TagChip({
+  active,
+  onClick,
+  pill,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  pill?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "border transition",
+        pill ? "rounded-full px-2 py-px text-[11px]" : "rounded px-2 py-0.5 text-[12px]",
+        active
+          ? "border-phos/50 bg-phos/10 text-phos"
+          : "border-line text-ink-mute hover:border-ink-faint hover:text-ink",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function Badge({ tone, children }: { tone: "phos" | "amber" | "signal" | "mute"; children: ReactNode }) {
   const tones = {
     phos: "border-phos/40 text-phos",
@@ -194,6 +237,35 @@ export function Dialog({
         {children}
       </div>
     </div>
+  );
+}
+
+/** 危险操作确认弹窗：统一"取消 / danger 确认"的按钮对与交互 */
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmText = "删除",
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  title: string;
+  message: ReactNode;
+  confirmText?: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onClose={onCancel} title={title}>
+      <p className="text-[13px] text-ink-mute">{message}</p>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button onClick={onCancel}>取消</Button>
+        <Button variant="danger" onClick={onConfirm}>
+          {confirmText}
+        </Button>
+      </div>
+    </Dialog>
   );
 }
 

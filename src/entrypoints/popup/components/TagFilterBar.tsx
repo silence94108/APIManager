@@ -1,5 +1,5 @@
 import type { Tag } from "@/types";
-import { cn } from "@/ui/components";
+import { TagChip } from "@/ui/components";
 
 export default function TagFilterBar({
   tags,
@@ -17,20 +17,16 @@ export default function TagFilterBar({
       {tags.map((tag) => {
         const active = selected.includes(tag.id);
         return (
-          <button
+          <TagChip
             key={tag.id}
+            pill
+            active={active}
             onClick={() =>
               onChange(active ? selected.filter((id) => id !== tag.id) : [...selected, tag.id])
             }
-            className={cn(
-              "rounded-full border px-2 py-px text-[11px] transition",
-              active
-                ? "border-phos/50 bg-phos/10 text-phos"
-                : "border-line text-ink-faint hover:border-ink-faint hover:text-ink-mute",
-            )}
           >
             #{tag.name}
-          </button>
+          </TagChip>
         );
       })}
       {selected.length > 0 && (

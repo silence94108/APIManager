@@ -1,5 +1,5 @@
-import { getSchedulerState, patchSchedulerState } from "@/storage/checkinState";
-import { getCheckinSettings } from "@/storage/settings";
+import { patchSchedulerState } from "@/storage/checkinState";
+import { checkinSettingsItem, schedulerStateItem } from "@/storage/items";
 import type { CheckinSettings } from "@/types";
 import { localDayString, parseHm } from "@/utils/day";
 import { runCheckin } from "./runner";
@@ -53,7 +53,7 @@ export function computeDailyFireTime(
 
 /** 保证有一个有效的每日闹钟。force=true 时强制重排（设置变更后用） */
 export async function ensureScheduled(force = false): Promise<void> {
-  const settings = await getCheckinSettings();
+  const settings = await checkinSettingsItem.getValue();
   if (!settings.autoEnabled) {
     await browser.alarms.clear(DAILY_ALARM);
     await browser.alarms.clear(RETRY_ALARM);
@@ -73,8 +73,8 @@ export async function ensureScheduled(force = false): Promise<void> {
 }
 
 async function scheduleDaily(): Promise<void> {
-  const settings = await getCheckinSettings();
-  const state = await getSchedulerState();
+  const settings = await checkinSettingsItem.getValue();
+  const state = await schedulerStateItem.getValue();
   const when = computeDailyFireTime(settings, state.lastDailyRunDay, new Date());
   browser.alarms.create(DAILY_ALARM, { when });
   await patchSchedulerState({
@@ -90,7 +90,7 @@ export async function handleAlarm(alarm: { name: string }): Promise<void> {
 
 async function handleDailyAlarm(): Promise<void> {
   const today = localDayString();
-  const state = await getSchedulerState();
+  const state = await schedulerStateItem.getValue();
 
   // 休眠跨天后触发的陈旧闹钟：目标日已过，丢弃并重排
   if (state.dailyAlarmTargetDay && state.dailyAlarmTargetDay !== today) {
@@ -109,7 +109,7 @@ async function handleDailyAlarm(): Promise<void> {
 }
 
 async function handleRetryAlarm(): Promise<void> {
-  const state = await getSchedulerState();
+  const state = await schedulerStateItem.getValue();
   const retry = state.retry;
   if (!retry) return;
 
@@ -129,7 +129,7 @@ async function maybeScheduleRetry(
   failedIds: string[],
   prevAttempts: Record<string, number>,
 ): Promise<void> {
-  const settings = await getCheckinSettings();
+  const settings = await checkinSettingsItem.getValue();
   if (!settings.retryEnabled || failedIds.length === 0) {
     await clearRetry();
     return;

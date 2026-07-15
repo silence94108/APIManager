@@ -1,13 +1,11 @@
 import { refreshAccountBalance } from "@/api/balance";
-import { listAccounts } from "@/storage/accounts";
-import { getCheckinResults, patchSchedulerState, setAccountCheckinRecord } from "@/storage/checkinState";
-import { getCheckinSettings } from "@/storage/settings";
-import type { Account, ProviderResult } from "@/types";
+import { patchSchedulerState } from "@/storage/checkinState";
+import { accountsItem, checkinResultsItem, checkinSettingsItem } from "@/storage/items";
+import type { Account, ProviderResult, RunKind, RunOutcome, RunSummary } from "@/types";
 import { localDayString } from "@/utils/day";
+import { canCheckin, formatRunSummary, isCheckedToday } from "./helpers";
 import { getProvider } from "./providers";
-import type { RunOutcome, RunSummary } from "./types";
-
-export type RunKind = "daily" | "manual" | "retry";
+import { failedFromError } from "./providers/shared";
 
 interface RunOptions {
   accountIds?: string[];
@@ -26,32 +24,31 @@ export function runCheckin(options: RunOptions): Promise<RunOutcome> {
 }
 
 async function doRun({ accountIds, kind }: RunOptions): Promise<RunOutcome> {
-  const all = await listAccounts();
+  const all = await accountsItem.getValue();
   const targets = accountIds ? all.filter((a) => accountIds.includes(a.id)) : all;
   const today = localDayString();
-  const priorResults = await getCheckinResults();
+  let results = await checkinResultsItem.getValue();
 
   const summary: RunSummary = { success: 0, already: 0, failed: 0, skipped: 0 };
   const failedIds: string[] = [];
 
   for (const account of targets) {
-    if (account.disabled || !account.checkinEnabled || account.tokenState === "expired") {
+    if (!canCheckin(account)) {
       summary.skipped++;
       continue;
     }
-    const prior = priorResults[account.id];
-    if (prior?.date === today && (prior.status === "success" || prior.status === "already_checked")) {
+    if (isCheckedToday(results[account.id], today)) {
       summary.already++;
       continue;
     }
 
     const result = await checkInOne(account);
-    await setAccountCheckinRecord(account.id, {
-      date: today,
-      status: result.status,
-      message: result.message,
-      at: Date.now(),
-    });
+    // 逐账号落盘：service worker 中途被杀也能保住已完成账号的记录
+    results = {
+      ...results,
+      [account.id]: { date: today, status: result.status, message: result.message, at: Date.now() },
+    };
+    await checkinResultsItem.setValue(results);
 
     if (result.status === "success") {
       summary.success++;
@@ -59,11 +56,9 @@ async function doRun({ accountIds, kind }: RunOptions): Promise<RunOutcome> {
       await refreshAccountBalance(account).catch(() => {});
     } else if (result.status === "already_checked") {
       summary.already++;
-    } else if (result.status === "failed") {
+    } else {
       summary.failed++;
       failedIds.push(account.id);
-    } else {
-      summary.skipped++;
     }
   }
 
@@ -77,7 +72,7 @@ async function checkInOne(account: Account): Promise<ProviderResult> {
   try {
     return await getProvider(account.siteType).checkIn(account);
   } catch (e) {
-    return { status: "failed", message: e instanceof Error ? e.message : String(e) };
+    return failedFromError(e);
   }
 }
 
@@ -87,7 +82,7 @@ async function notifyIfEnabled(
   targets: Account[],
   failedIds: string[],
 ): Promise<void> {
-  const settings = await getCheckinSettings();
+  const settings = await checkinSettingsItem.getValue();
   // 手动单账号操作 UI 上有即时反馈，不再弹系统通知
   if (!settings.notifyOnFinish || kind === "manual") return;
   if (summary.success + summary.failed === 0) return;
@@ -96,7 +91,7 @@ async function notifyIfEnabled(
     .filter((a) => failedIds.includes(a.id))
     .map((a) => a.name)
     .join("、");
-  const lines = [`成功 ${summary.success} · 已签 ${summary.already} · 失败 ${summary.failed}`];
+  const lines = [formatRunSummary(summary)];
   if (failedNames) lines.push(`失败：${failedNames}`);
 
   try {

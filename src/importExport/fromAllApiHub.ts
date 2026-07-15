@@ -1,7 +1,5 @@
-import { listAccounts, saveAccount } from "@/storage/accounts";
-import { findOrCreateTagByName } from "@/storage/groupsTags";
-import { tagsItem } from "@/storage/items";
-import type { SiteType, Tag } from "@/types";
+import { accountsItem, tagsItem } from "@/storage/items";
+import type { Account, SiteType, Tag } from "@/types";
 import { normalizeOrigin } from "@/utils/url";
 
 /** all-api-hub site_type → 本项目 siteType（精确匹配，注意原版 "Veloera" 大写 V） */
@@ -109,39 +107,61 @@ export interface ImportReport {
   tagsImported: number;
 }
 
-/** 执行导入：标签先入库（按 id 合并），账号按 (url, userId) 判重 */
+/** 执行导入：全部在内存合并（标签 id 合并 + legacy 名建档、账号按 (url, userId) 判重），最后各一次批量写 */
 export async function executeAllApiHubImport(
   preview: ImportPreview,
   options: { overwriteExisting: boolean },
 ): Promise<ImportReport> {
   const existingTags = await tagsItem.getValue();
-  const knownTagIds = new Set(existingTags.map((t) => t.id));
-  const newTags = preview.tags.filter((t) => !knownTagIds.has(t.id));
-  if (newTags.length) await tagsItem.setValue([...existingTags, ...newTags]);
-  const validTagIds = new Set([...knownTagIds, ...newTags.map((t) => t.id)]);
+  const tagById = new Map(existingTags.map((t) => [t.id, t]));
+  const tagByName = new Map(existingTags.map((t) => [t.name, t]));
+  const nextTags = [...existingTags];
+  let tagsImported = 0;
 
-  const existingAccounts = await listAccounts();
+  for (const tag of preview.tags) {
+    if (tagById.has(tag.id)) continue;
+    tagById.set(tag.id, tag);
+    tagByName.set(tag.name, tag);
+    nextTags.push(tag);
+    tagsImported++;
+  }
+
+  const legacyTagId = (name: string): string => {
+    const found = tagByName.get(name);
+    if (found) return found.id;
+    const created: Tag = { id: crypto.randomUUID(), name, createdAt: Date.now() };
+    tagById.set(created.id, created);
+    tagByName.set(name, created);
+    nextTags.push(created);
+    tagsImported++;
+    return created.id;
+  };
+
+  const existingAccounts = await accountsItem.getValue();
   const keyOf = (url: string, userId: string) => `${url}::${userId}`;
-  const existingByKey = new Map(existingAccounts.map((a) => [keyOf(a.url, a.userId), a]));
+  const byKey = new Map(existingAccounts.map((a) => [keyOf(a.url, a.userId), a]));
+  const nextAccounts = [...existingAccounts];
+  const indexById = new Map(nextAccounts.map((a, i) => [a.id, i] as const));
 
   let imported = 0;
   let skippedExisting = 0;
+  const now = Date.now();
 
   for (const parsed of preview.importable) {
-    const existing = existingByKey.get(keyOf(parsed.url, parsed.userId));
+    const existing = byKey.get(keyOf(parsed.url, parsed.userId));
     if (existing && !options.overwriteExisting) {
       skippedExisting++;
       continue;
     }
 
-    const tagIds = parsed.tagIds.filter((id) => validTagIds.has(id));
+    const tagIds = parsed.tagIds.filter((id) => tagById.has(id));
     for (const legacyName of parsed.legacyTagNames) {
-      const tag = await findOrCreateTagByName(legacyName);
-      if (!tagIds.includes(tag.id)) tagIds.push(tag.id);
+      const id = legacyTagId(legacyName);
+      if (!tagIds.includes(id)) tagIds.push(id);
     }
 
-    await saveAccount({
-      id: existing?.id,
+    const account: Account = {
+      id: existing?.id ?? crypto.randomUUID(),
       name: parsed.name,
       url: parsed.url,
       siteType: parsed.siteType,
@@ -155,9 +175,26 @@ export async function executeAllApiHubImport(
       checkinEnabled: parsed.checkinEnabled,
       groupId: existing?.groupId ?? null,
       tagIds,
-    });
+      tokenState: existing?.tokenState,
+      balance: existing?.balance,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    if (existing) {
+      nextAccounts[indexById.get(existing.id)!] = account;
+    } else {
+      byKey.set(keyOf(account.url, account.userId), account);
+      indexById.set(account.id, nextAccounts.length);
+      nextAccounts.push(account);
+    }
     imported++;
   }
 
-  return { imported, skippedExisting, tagsImported: newTags.length };
+  await Promise.all([
+    tagsImported > 0 ? tagsItem.setValue(nextTags) : Promise.resolve(),
+    imported > 0 ? accountsItem.setValue(nextAccounts) : Promise.resolve(),
+  ]);
+
+  return { imported, skippedExisting, tagsImported };
 }

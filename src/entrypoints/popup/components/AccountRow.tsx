@@ -1,20 +1,10 @@
 import { useState } from "react";
+import { canCheckin } from "@/checkin/helpers";
 import { sendMessage } from "@/messaging/protocol";
 import { checkinResultsItem } from "@/storage/items";
 import type { Account, CheckinResults } from "@/types";
 import { formatUsd } from "@/utils/quota";
-import { cn, Spinner, StatusDot, toast, type DotStatus } from "@/ui/components";
-
-function dotStatus(account: Account, results: CheckinResults, today: string): DotStatus {
-  if (account.disabled) return "disabled";
-  if (account.tokenState === "expired") return "expired";
-  const r = results[account.id];
-  if (r?.date === today) {
-    if (r.status === "success" || r.status === "already_checked") return "checked";
-    if (r.status === "failed") return "failed";
-  }
-  return "unchecked";
-}
+import { cn, dotStatus, Spinner, StatusDot, toast } from "@/ui/components";
 
 export default function AccountRow({
   account,
@@ -29,7 +19,7 @@ export default function AccountRow({
   const [pulse, setPulse] = useState(false);
 
   const status = dotStatus(account, results, today);
-  const canCheckin = !account.disabled && account.checkinEnabled && account.tokenState !== "expired";
+  const eligible = canCheckin(account);
 
   async function checkin() {
     setBusy("checkin");
@@ -92,7 +82,7 @@ export default function AccountRow({
           <Spinner className="mx-1.5" />
         ) : (
           <>
-            {canCheckin && (
+            {eligible && (
               <RowAction title="签到" onClick={checkin}>
                 ⚡
               </RowAction>

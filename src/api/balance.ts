@@ -1,4 +1,5 @@
 import { patchAccount } from "@/storage/accounts";
+import { accountsItem } from "@/storage/items";
 import type { Account } from "@/types";
 import { quotaToUsd } from "@/utils/quota";
 import { ApiError, siteFetch } from "./transport";
@@ -39,4 +40,38 @@ export async function refreshAccountBalance(account: Account): Promise<number> {
   const usd = await fetchBalance(account);
   await patchAccount(account.id, { balance: { usd, updatedAt: Date.now() } });
   return usd;
+}
+
+/** 并行刷新一批账号余额，结果一次性批量写回（并发 patchAccount 会互相覆盖，必须批量） */
+export async function refreshBalances(
+  accounts: Account[],
+): Promise<{ done: number; failed: { name: string; error: string }[] }> {
+  const settled = await Promise.allSettled(accounts.map((a) => fetchBalance(a)));
+
+  const usdById = new Map<string, number>();
+  const failed: { name: string; error: string }[] = [];
+  settled.forEach((r, i) => {
+    if (r.status === "fulfilled") {
+      usdById.set(accounts[i].id, r.value);
+    } else {
+      failed.push({
+        name: accounts[i].name,
+        error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+      });
+    }
+  });
+
+  if (usdById.size > 0) {
+    const now = Date.now();
+    const all = await accountsItem.getValue();
+    await accountsItem.setValue(
+      all.map((a) =>
+        usdById.has(a.id)
+          ? { ...a, balance: { usd: usdById.get(a.id)!, updatedAt: now }, updatedAt: now }
+          : a,
+      ),
+    );
+  }
+
+  return { done: usdById.size, failed };
 }

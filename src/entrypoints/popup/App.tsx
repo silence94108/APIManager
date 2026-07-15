@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { formatRunSummary } from "@/checkin/helpers";
 import { sendMessage } from "@/messaging/protocol";
 import {
   accountsItem,
@@ -10,7 +11,7 @@ import {
 import { setGroupCollapsed } from "@/storage/groupsTags";
 import type { Account, Group } from "@/types";
 import { localDayString } from "@/utils/day";
-import { formatUsd } from "@/utils/quota";
+import { formatUsd, sumBalanceUsd } from "@/utils/quota";
 import { Button, cn, EmptyState, Spinner, ToastHost, toast } from "@/ui/components";
 import { useStorageItem } from "@/ui/hooks";
 import AccountRow from "./components/AccountRow";
@@ -46,14 +47,12 @@ export default function App() {
       selectedTagIds.length === 0
         ? accounts
         : accounts.filter((a) => selectedTagIds.some((t) => a.tagIds.includes(t)));
-    const balanceOf = (list: Account[]) =>
-      list.reduce((sum, a) => sum + (a.disabled ? 0 : (a.balance?.usd ?? 0)), 0);
 
     const grouped: Section[] = [...groups]
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((g) => {
         const list = filtered.filter((a) => a.groupId === g.id);
-        return { key: g.id, group: g, accounts: list, balance: balanceOf(list) };
+        return { key: g.id, group: g, accounts: list, balance: sumBalanceUsd(list) };
       });
     const ungrouped = filtered.filter((a) => !a.groupId);
     if (ungrouped.length || grouped.length === 0) {
@@ -61,7 +60,7 @@ export default function App() {
         key: "__ungrouped",
         group: null,
         accounts: ungrouped,
-        balance: balanceOf(ungrouped),
+        balance: sumBalanceUsd(ungrouped),
       });
     }
     const filtering = selectedTagIds.length > 0;
@@ -72,10 +71,7 @@ export default function App() {
     return <div className="w-[380px] p-6" />;
   }
 
-  const totalUsd = accounts.reduce(
-    (sum, a) => sum + (a.disabled ? 0 : (a.balance?.usd ?? 0)),
-    0,
-  );
+  const totalUsd = sumBalanceUsd(accounts);
   const [intPart, decPart] = formatUsd(totalUsd).split(".");
 
   async function checkinAll() {
@@ -83,8 +79,7 @@ export default function App() {
     try {
       const res = await sendMessage("runCheckin", {});
       if (res.ok) {
-        const s = res.outcome.summary;
-        toast(`签到完成：成功 ${s.success} · 已签 ${s.already} · 失败 ${s.failed}`);
+        toast(`签到完成：${formatRunSummary(res.outcome.summary)}`);
       } else {
         toast(res.error, "err");
       }

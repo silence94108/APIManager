@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { fakeBrowser } from "wxt/testing";
-import { listAccounts, saveAccount } from "@/storage/accounts";
-import { listTags, saveTag } from "@/storage/groupsTags";
+import { saveAccount } from "@/storage/accounts";
+import { saveTag } from "@/storage/groupsTags";
+import { accountsItem, tagsItem } from "@/storage/items";
 import { executeAllApiHubImport, parseAllApiHubBackup } from "../fromAllApiHub";
 
 function backupWith(accounts: unknown[], tagsById: Record<string, unknown> = {}) {
@@ -90,9 +91,9 @@ describe("executeAllApiHubImport", () => {
     const report = await executeAllApiHubImport(preview, { overwriteExisting: false });
 
     expect(report.imported).toBe(1);
-    const tags = await listTags();
+    const tags = await tagsItem.getValue();
     expect(tags.map((t) => t.name).sort()).toEqual(["囤货", "新标签"]);
-    const [account] = await listAccounts();
+    const [account] = await accountsItem.getValue();
     expect(account.tagIds).toHaveLength(2);
   });
 
@@ -117,7 +118,7 @@ describe("executeAllApiHubImport", () => {
 
     const over = await executeAllApiHubImport(preview, { overwriteExisting: true });
     expect(over.imported).toBe(1);
-    const accounts = await listAccounts();
+    const accounts = await accountsItem.getValue();
     expect(accounts).toHaveLength(1);
     expect(accounts[0].id).toBe(existing.id);
     expect(accounts[0].name).toBe("测试站");

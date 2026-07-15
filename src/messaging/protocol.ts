@@ -1,5 +1,5 @@
 import { defineExtensionMessaging } from "@webext-core/messaging";
-import type { RunOutcome } from "@/checkin/types";
+import type { RunOutcome } from "@/types";
 
 /** UI → background 的 RPC。错误走显式 ok/error 通道，不依赖跨端 Error 序列化 */
 interface ProtocolMap {

@@ -8,12 +8,15 @@ import {
   Badge,
   Button,
   cn,
+  ConfirmDialog,
   Dialog,
+  dotStatus,
   EmptyState,
   Field,
   Input,
   Select,
   StatusDot,
+  TagChip,
   toast,
   Toggle,
 } from "@/ui/components";
@@ -70,7 +73,7 @@ export default function AccountsPage() {
   const groups = useStorageItem(groupsItem);
   const tags = useStorageItem(tagsItem);
 
-  const [form, setForm] = useState<FormState | null>(null);
+  const [editing, setEditing] = useState<FormState | null>(null);
   const [deleting, setDeleting] = useState<Account | null>(null);
 
   const groupName = useMemo(() => {
@@ -89,7 +92,7 @@ export default function AccountsPage() {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="readout text-[15px] text-ink">账号 · {accounts.length}</h1>
-        <Button variant="phos" onClick={() => setForm({ ...EMPTY_FORM })}>
+        <Button variant="phos" onClick={() => setEditing({ ...EMPTY_FORM })}>
           + 添加账号
         </Button>
       </div>
@@ -99,7 +102,7 @@ export default function AccountsPage() {
           icon="▦"
           text="还没有账号——添加一个中转站账号，或在「数据」页导入 all-api-hub 备份"
           action={
-            <Button variant="phos" onClick={() => setForm({ ...EMPTY_FORM })}>
+            <Button variant="phos" onClick={() => setEditing({ ...EMPTY_FORM })}>
               添加第一个账号
             </Button>
           }
@@ -122,9 +125,7 @@ export default function AccountsPage() {
                 <tr key={account.id} className="border-b border-line/50 last:border-0 hover:bg-raised/40">
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
-                      <StatusDot
-                        status={account.disabled ? "disabled" : account.tokenState === "expired" ? "expired" : "unchecked"}
-                      />
+                      <StatusDot status={dotStatus(account)} />
                       <div className="min-w-0">
                         <p className={cn("truncate", account.disabled && "text-ink-faint line-through")}>
                           {account.name}
@@ -157,7 +158,7 @@ export default function AccountsPage() {
                   </td>
                   <td className="px-3 py-2 text-right">
                     <div className="flex justify-end gap-1.5">
-                      <Button size="sm" onClick={() => setForm(toForm(account))}>
+                      <Button size="sm" onClick={() => setEditing(toForm(account))}>
                         编辑
                       </Button>
                       <Button size="sm" variant="danger" onClick={() => setDeleting(account)}>
@@ -172,56 +173,51 @@ export default function AccountsPage() {
         </div>
       )}
 
-      {form && (
+      {editing && (
         <AccountFormDialog
-          form={form}
+          initial={editing}
           groups={groups ?? []}
           tags={tags ?? []}
-          onClose={() => setForm(null)}
-          onChange={setForm}
+          onClose={() => setEditing(null)}
         />
       )}
 
-      <Dialog open={!!deleting} onClose={() => setDeleting(null)} title="删除账号">
-        <p className="text-[13px] text-ink-mute">
-          确定删除 <span className="text-ink">{deleting?.name}</span>
-          ？该操作不可撤销（站点上的账号不受影响）。
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button onClick={() => setDeleting(null)}>取消</Button>
-          <Button
-            variant="danger"
-            onClick={async () => {
-              if (!deleting) return;
-              await deleteAccount(deleting.id);
-              setDeleting(null);
-              toast(`已删除 ${deleting.name}`);
-            }}
-          >
-            删除
-          </Button>
-        </div>
-      </Dialog>
+      <ConfirmDialog
+        open={!!deleting}
+        title="删除账号"
+        message={
+          <>
+            确定删除 <span className="text-ink">{deleting?.name}</span>
+            ？该操作不可撤销（站点上的账号不受影响）。
+          </>
+        }
+        onCancel={() => setDeleting(null)}
+        onConfirm={async () => {
+          if (!deleting) return;
+          await deleteAccount(deleting.id);
+          setDeleting(null);
+          toast(`已删除 ${deleting.name}`);
+        }}
+      />
     </div>
   );
 }
 
 function AccountFormDialog({
-  form,
+  initial,
   groups,
   tags,
   onClose,
-  onChange,
 }: {
-  form: FormState;
+  initial: FormState;
   groups: { id: string; name: string }[];
   tags: { id: string; name: string }[];
   onClose: () => void;
-  onChange: (f: FormState) => void;
 }) {
+  const [form, setForm] = useState(initial);
   const [errors, setErrors] = useState<Partial<Record<"name" | "url" | "userId" | "accessToken", string>>>({});
   const isAnyrouter = form.siteType === "anyrouter";
-  const set = (patch: Partial<FormState>) => onChange({ ...form, ...patch });
+  const set = (patch: Partial<FormState>) => setForm((prev) => ({ ...prev, ...patch }));
 
   async function submit() {
     const next: typeof errors = {};
@@ -342,9 +338,9 @@ function AccountFormDialog({
                 {tags.map((t) => {
                   const active = form.tagIds.includes(t.id);
                   return (
-                    <button
+                    <TagChip
                       key={t.id}
-                      type="button"
+                      active={active}
                       onClick={() =>
                         set({
                           tagIds: active
@@ -352,15 +348,9 @@ function AccountFormDialog({
                             : [...form.tagIds, t.id],
                         })
                       }
-                      className={cn(
-                        "rounded border px-2 py-0.5 text-[12px] transition",
-                        active
-                          ? "border-phos/50 bg-phos/10 text-phos"
-                          : "border-line text-ink-mute hover:border-ink-faint",
-                      )}
                     >
                       {t.name}
-                    </button>
+                    </TagChip>
                   );
                 })}
               </div>

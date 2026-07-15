@@ -1,7 +1,7 @@
 import { siteFetch } from "@/api/transport";
 import type { Account, ProviderResult } from "@/types";
 import type { CheckinProvider } from "../types";
-import { failedFromError, isAlreadyCheckedMessage } from "./shared";
+import { failedFromError, resultFromSuccessMessage } from "./shared";
 
 interface SignInResponse {
   code?: number;
@@ -28,13 +28,10 @@ export const anyrouterProvider: CheckinProvider = {
         return { status: "success", message };
       }
       // AnyRouter 特例：已签到时 message 为空
-      if (message === "" || isAlreadyCheckedMessage(message)) {
+      if (message === "") {
         return { status: "already_checked", message };
       }
-      if (res.success === true || res.ret === 1) {
-        return { status: "success", message };
-      }
-      return { status: "failed", message: message || "签到失败（站点未返回原因）" };
+      return resultFromSuccessMessage(res.success === true || res.ret === 1, message);
     } catch (e) {
       return failedFromError(e);
     }

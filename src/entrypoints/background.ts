@@ -1,9 +1,9 @@
-import { refreshAccountBalance } from "@/api/balance";
+import { refreshAccountBalance, refreshBalances } from "@/api/balance";
 import { ensureScheduled, handleAlarm } from "@/checkin/scheduler";
 import { runCheckin } from "@/checkin/runner";
 import { onMessage } from "@/messaging/protocol";
-import { getAccount, listAccounts } from "@/storage/accounts";
-import { getSchedulerState } from "@/storage/checkinState";
+import { getAccount } from "@/storage/accounts";
+import { accountsItem, schedulerStateItem } from "@/storage/items";
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -26,18 +26,8 @@ export default defineBackground(() => {
   });
 
   onMessage("refreshAllBalances", async () => {
-    const accounts = (await listAccounts()).filter((a) => !a.disabled);
-    let done = 0;
-    const failed: { name: string; error: string }[] = [];
-    for (const account of accounts) {
-      try {
-        await refreshAccountBalance(account);
-        done++;
-      } catch (e) {
-        failed.push({ name: account.name, error: errorText(e) });
-      }
-    }
-    return { done, failed };
+    const accounts = (await accountsItem.getValue()).filter((a) => !a.disabled);
+    return refreshBalances(accounts);
   });
 
   onMessage("runCheckin", async ({ data }) => {
@@ -51,7 +41,7 @@ export default defineBackground(() => {
 
   onMessage("reschedule", async () => {
     await ensureScheduled(true);
-    const state = await getSchedulerState();
+    const state = await schedulerStateItem.getValue();
     return { nextDailyAt: state.nextDailyAt };
   });
 

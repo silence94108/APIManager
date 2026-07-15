@@ -8,6 +8,16 @@ export function isAlreadyCheckedMessage(message: string): boolean {
   return ALREADY_CHECKED_PATTERNS.some((p) => lower.includes(p.toLowerCase()));
 }
 
+/** new-api 系 {success, message} 响应 → 统一结果。解析规则的唯一出处，新增分叉站点 provider 直接复用 */
+export function resultFromSuccessMessage(
+  success: boolean | undefined,
+  message: string,
+): ProviderResult {
+  if (success) return { status: "success", message };
+  if (isAlreadyCheckedMessage(message)) return { status: "already_checked", message };
+  return { status: "failed", message: message || "签到失败（站点未返回原因）" };
+}
+
 /** 异常 → 统一 failed 结果；404 归一为"站点不支持" */
 export function failedFromError(e: unknown): ProviderResult {
   if (e instanceof ApiError) {

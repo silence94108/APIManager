@@ -55,7 +55,7 @@ export interface Tag {
   createdAt: number;
 }
 
-export type CheckinStatus = "success" | "already_checked" | "failed" | "skipped";
+export type CheckinStatus = "success" | "already_checked" | "failed";
 
 export interface ProviderResult {
   status: CheckinStatus;
@@ -68,6 +68,21 @@ export interface AccountCheckinRecord {
   status: CheckinStatus;
   message?: string;
   at: number;
+}
+
+export type RunKind = "daily" | "manual" | "retry";
+
+export interface RunSummary {
+  success: number;
+  already: number;
+  failed: number;
+  skipped: number;
+}
+
+export interface RunOutcome {
+  summary: RunSummary;
+  /** 本轮 failed 的账号 id（重试调度的输入） */
+  failedIds: string[];
 }
 
 export interface CheckinSettings {
@@ -93,8 +108,8 @@ export interface SchedulerState {
   };
   lastRun?: {
     at: number;
-    kind: "daily" | "manual" | "retry";
-    summary: { success: number; already: number; failed: number; skipped: number };
+    kind: RunKind;
+    summary: RunSummary;
   };
 }
 

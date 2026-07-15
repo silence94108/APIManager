@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
+import { formatRunSummary } from "@/checkin/helpers";
 import { sendMessage } from "@/messaging/protocol";
-import { accountsItem, checkinResultsItem, schedulerStateItem } from "@/storage/items";
-import { getCheckinSettings, setCheckinSettings } from "@/storage/settings";
+import {
+  accountsItem,
+  checkinResultsItem,
+  checkinSettingsItem,
+  schedulerStateItem,
+} from "@/storage/items";
 import type { CheckinSettings, CheckinStatus } from "@/types";
 import { localDayString, parseHm } from "@/utils/day";
 import { Badge, Button, Field, Input, Spinner, toast, Toggle } from "@/ui/components";
@@ -11,7 +16,6 @@ const STATUS_LABELS: Record<CheckinStatus, { text: string; tone: "phos" | "amber
   success: { text: "成功", tone: "phos" },
   already_checked: { text: "已签", tone: "mute" },
   failed: { text: "失败", tone: "signal" },
-  skipped: { text: "跳过", tone: "mute" },
 };
 
 function fmtTime(ts?: number): string {
@@ -27,7 +31,7 @@ export default function CheckinPage() {
   const accounts = useStorageItem(accountsItem);
 
   useEffect(() => {
-    void getCheckinSettings().then(setSettings);
+    void checkinSettingsItem.getValue().then(setSettings);
   }, []);
 
   if (!settings) return null;
@@ -40,7 +44,7 @@ export default function CheckinPage() {
       toast("时间窗口无效：要求 开始 < 结束（同一天内）", "err");
       return;
     }
-    await setCheckinSettings(settings);
+    await checkinSettingsItem.setValue(settings);
     const { nextDailyAt } = await sendMessage("reschedule", undefined);
     toast(
       settings.autoEnabled
@@ -54,8 +58,7 @@ export default function CheckinPage() {
     try {
       const res = await sendMessage("runCheckin", {});
       if (res.ok) {
-        const s = res.outcome.summary;
-        toast(`签到完成：成功 ${s.success} · 已签 ${s.already} · 失败 ${s.failed} · 跳过 ${s.skipped}`);
+        toast(`签到完成：${formatRunSummary(res.outcome.summary, { withSkipped: true })}`);
       } else {
         toast(res.error, "err");
       }

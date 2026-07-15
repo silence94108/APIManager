@@ -5,10 +5,6 @@ export type AccountDraft = Omit<Account, "id" | "createdAt" | "updatedAt"> & {
   id?: string;
 };
 
-export function listAccounts(): Promise<Account[]> {
-  return accountsItem.getValue();
-}
-
 export async function getAccount(id: string): Promise<Account | undefined> {
   return (await accountsItem.getValue()).find((a) => a.id === id);
 }

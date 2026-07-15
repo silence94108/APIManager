@@ -3,10 +3,6 @@ import { accountsItem, groupsItem, tagsItem } from "./items";
 
 // ── 分组 ──────────────────────────────────────────────
 
-export function listGroups(): Promise<Group[]> {
-  return groupsItem.getValue();
-}
-
 export async function saveGroup(input: { id?: string; name: string }): Promise<Group> {
   const groups = await groupsItem.getValue();
   const existing = input.id ? groups.find((g) => g.id === input.id) : undefined;
@@ -55,10 +51,6 @@ export async function deleteGroup(id: string): Promise<void> {
 }
 
 // ── 标签 ──────────────────────────────────────────────
-
-export function listTags(): Promise<Tag[]> {
-  return tagsItem.getValue();
-}
 
 export async function saveTag(input: { id?: string; name: string }): Promise<Tag> {
   const tags = await tagsItem.getValue();
