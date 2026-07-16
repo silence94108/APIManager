@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { formatRunSummary } from "@/checkin/helpers";
+import { detectCurrentSite } from "@/detect/detectCurrentSite";
 import { sendMessage } from "@/messaging/protocol";
 import {
   accountsItem,
   checkinResultsItem,
   groupsItem,
+  pendingDetectedItem,
   schedulerStateItem,
   tagsItem,
 } from "@/storage/items";
@@ -37,7 +39,7 @@ export default function App() {
 
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [ungroupedCollapsed, setUngroupedCollapsed] = useState(false);
-  const [busyAll, setBusyAll] = useState<"checkin" | "refresh" | null>(null);
+  const [busyAll, setBusyAll] = useState<"checkin" | "refresh" | "detect" | null>(null);
 
   const today = localDayString();
 
@@ -102,6 +104,22 @@ export default function App() {
     }
   }
 
+  async function detect() {
+    setBusyAll("detect");
+    try {
+      const result = await detectCurrentSite();
+      if (result.ok) {
+        await pendingDetectedItem.setValue(result.account);
+      } else {
+        toast(result.reason, "err");
+      }
+      // 无论识别成功（预填）还是失败（转手动录入），都打开设置页的账号页
+      await browser.runtime.openOptionsPage();
+    } finally {
+      setBusyAll(null);
+    }
+  }
+
   const nextDaily = schedulerState?.nextDailyAt;
 
   return (
@@ -126,6 +144,14 @@ export default function App() {
             </p>
           </div>
           <div className="flex gap-1.5 pt-0.5">
+            <Button
+              size="sm"
+              disabled={busyAll !== null}
+              onClick={detect}
+              title="识别当前标签页的中转站账号"
+            >
+              {busyAll === "detect" ? <Spinner /> : "⊕ 识别"}
+            </Button>
             <Button size="sm" variant="phos" disabled={busyAll !== null} onClick={checkinAll} title="全部签到">
               {busyAll === "checkin" ? <Spinner /> : "⚡ 全签"}
             </Button>

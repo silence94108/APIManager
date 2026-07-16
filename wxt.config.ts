@@ -10,7 +10,7 @@ export default defineConfig({
   }),
   manifest: {
     name: "APIManager",
-    permissions: ["storage", "alarms", "notifications"],
+    permissions: ["storage", "alarms", "notifications", "activeTab", "scripting"],
     host_permissions: ["<all_urls>"],
     icons: {
       16: "/icon/16.png",

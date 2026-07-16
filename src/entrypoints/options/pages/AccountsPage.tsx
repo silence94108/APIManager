@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { deleteAccount, saveAccount, type AccountDraft } from "@/storage/accounts";
-import { accountsItem, groupsItem, tagsItem } from "@/storage/items";
+import { accountsItem, groupsItem, pendingDetectedItem, tagsItem } from "@/storage/items";
+import type { DetectedAccount } from "@/detect/types";
 import { SITE_TYPES, SITE_TYPE_LABELS, type Account, type SiteType } from "@/types";
 import { formatUsd } from "@/utils/quota";
 import { isValidSiteUrl, normalizeOrigin } from "@/utils/url";
@@ -68,13 +69,40 @@ function toForm(account: Account): FormState {
   };
 }
 
+/** 识别草稿 → 新增表单预填态：站点名默认取 hostname，其余按识别结果填，用户可改 */
+function fromDetected(d: DetectedAccount): FormState {
+  let name = "";
+  try {
+    name = new URL(d.url).hostname;
+  } catch {
+    name = d.url;
+  }
+  return {
+    ...EMPTY_FORM,
+    name,
+    url: d.url,
+    siteType: d.siteType,
+    userId: d.userId,
+    accessToken: d.accessToken ?? "",
+    username: d.username ?? "",
+  };
+}
+
 export default function AccountsPage() {
   const accounts = useStorageItem(accountsItem);
   const groups = useStorageItem(groupsItem);
   const tags = useStorageItem(tagsItem);
+  const pendingDetected = useStorageItem(pendingDetectedItem);
 
   const [editing, setEditing] = useState<FormState | null>(null);
   const [deleting, setDeleting] = useState<Account | null>(null);
+
+  // popup 识别当前站点后写入草稿 → 这里预填表单并清空暂存（清空后关闭表单不会再次弹出）
+  useEffect(() => {
+    if (!pendingDetected) return;
+    setEditing(fromDetected(pendingDetected));
+    void pendingDetectedItem.setValue(null);
+  }, [pendingDetected]);
 
   const groupName = useMemo(() => {
     const map = new Map((groups ?? []).map((g) => [g.id, g.name]));
