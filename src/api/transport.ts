@@ -11,6 +11,18 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 站点开启了 Cloudflare 人机验证（Turnstile / JS Challenge）拦下了本次请求。
+ * 单列一类（继承 ApiError，不破坏既有 instanceof 判断），供上层归入"待验证"
+ * 而非"失败"——引导用户到站点页面完成验证，不做静默绕过。
+ */
+export class VerificationRequiredError extends ApiError {
+  constructor(status: number, message = "站点开启了人机验证，请在站点页面完成验证后重试") {
+    super(status, message);
+    this.name = "VerificationRequiredError";
+  }
+}
+
 export interface SiteFetchOptions {
   method?: "GET" | "POST";
   body?: string;
@@ -62,6 +74,17 @@ export async function siteFetch<T = unknown>(
   }
 
   const contentType = res.headers.get("content-type") ?? "";
+  // Cloudflare 人机验证挑战：cf-mitigated:challenge（现代 Turnstile 托管挑战），
+  // 或经 Cloudflare（有 cf-ray）返回 403/503 的非 JSON 挑战页。单独归类交上层引导。
+  const isCfChallenge =
+    res.headers.get("cf-mitigated") === "challenge" ||
+    (!!res.headers.get("cf-ray") &&
+      (res.status === 403 || res.status === 503) &&
+      !contentType.includes("json"));
+  if (isCfChallenge) {
+    throw new VerificationRequiredError(res.status);
+  }
+
   if (!contentType.includes("json")) {
     throw new ApiError(
       res.status,
