@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { deleteAccount, saveAccount, type AccountDraft } from "@/storage/accounts";
+import { sendMessage } from "@/messaging/protocol";
 import { accountsItem, groupsItem, pendingDetectedItem, tagsItem } from "@/storage/items";
 import type { DetectedAccount } from "@/detect/types";
 import { SITE_TYPES, SITE_TYPE_LABELS, type Account, type SiteType } from "@/types";
@@ -275,9 +276,15 @@ function AccountFormDialog({
       // 编辑时重新提交 token 视为已更新，清除过期标记
       tokenState: "ok",
     };
-    await saveAccount(draft);
+    const saved = await saveAccount(draft);
     toast(form.id ? "账号已更新" : "账号已添加");
     onClose();
+    // 新增账号后台顺手拉一次余额，不阻塞关闭；拉成功后写回 storage，列表自动显示
+    if (!form.id) {
+      void sendMessage("refreshBalance", saved.id).then((res) => {
+        if (!res.ok) toast(`${saved.name} 余额拉取失败：${res.error}`, "err");
+      });
+    }
   }
 
   return (
