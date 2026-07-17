@@ -6,7 +6,6 @@ import {
   accountsItem,
   checkinResultsItem,
   groupsItem,
-  pendingDetectedItem,
   schedulerStateItem,
   tagsItem,
 } from "@/storage/items";
@@ -14,6 +13,7 @@ import { setGroupCollapsed } from "@/storage/groupsTags";
 import type { Account, Group } from "@/types";
 import { localDayString } from "@/utils/day";
 import { formatUsd, sumBalanceUsd } from "@/utils/quota";
+import { AccountFormDialog, fromDetected, type FormState } from "@/ui/AccountFormDialog";
 import { Button, cn, EmptyState, Spinner, ToastHost, toast } from "@/ui/components";
 import { useStorageItem } from "@/ui/hooks";
 import AccountRow from "./components/AccountRow";
@@ -40,6 +40,7 @@ export default function App() {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [ungroupedCollapsed, setUngroupedCollapsed] = useState(false);
   const [busyAll, setBusyAll] = useState<"checkin" | "refresh" | "detect" | null>(null);
+  const [detected, setDetected] = useState<FormState | null>(null);
 
   const today = localDayString();
 
@@ -109,12 +110,11 @@ export default function App() {
     try {
       const result = await detectCurrentSite();
       if (result.ok) {
-        await pendingDetectedItem.setValue(result.account);
+        // 直接在 popup 内弹预填表单，不再跳设置页
+        setDetected(fromDetected(result.account));
       } else {
         toast(result.reason, "err");
       }
-      // 无论识别成功（预填）还是失败（转手动录入），都打开设置页的账号页
-      await browser.runtime.openOptionsPage();
     } finally {
       setBusyAll(null);
     }
@@ -123,7 +123,13 @@ export default function App() {
   const nextDaily = schedulerState?.nextDailyAt;
 
   return (
-    <div className="flex max-h-[580px] w-[380px] flex-col">
+    <div
+      className={cn(
+        "flex max-h-[580px] w-[380px] flex-col",
+        // 弹窗打开时撑高视口，否则账号少时 popup 太矮、表单被压扁
+        detected && "min-h-[560px]",
+      )}
+    >
       <header className="relative border-b border-line px-4 pb-3 pt-4">
         {/* 仪表背光 */}
         <div
@@ -233,6 +239,15 @@ export default function App() {
             : "自动签到未开启"}
         </span>
       </footer>
+
+      {detected && (
+        <AccountFormDialog
+          initial={detected}
+          groups={groups}
+          tags={tags}
+          onClose={() => setDetected(null)}
+        />
+      )}
 
       <ToastHost />
     </div>

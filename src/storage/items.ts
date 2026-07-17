@@ -1,5 +1,4 @@
 import { storage } from "wxt/utils/storage";
-import type { DetectedAccount } from "@/detect/types";
 import type {
   Account,
   CheckinResults,
@@ -42,10 +41,4 @@ export const schedulerStateItem = storage.defineItem<SchedulerState>(
 export const checkinResultsItem = storage.defineItem<CheckinResults>(
   "local:checkinResults",
   { fallback: {} },
-);
-
-/** popup 识别当前站点后暂存草稿，options 页读取后预填「添加账号」表单并清空 */
-export const pendingDetectedItem = storage.defineItem<DetectedAccount | null>(
-  "local:pendingDetected",
-  { fallback: null },
 );
