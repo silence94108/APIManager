@@ -29,8 +29,9 @@ async function doRun({ accountIds, kind }: RunOptions): Promise<RunOutcome> {
   const today = localDayString();
   let results = await checkinResultsItem.getValue();
 
-  const summary: RunSummary = { success: 0, already: 0, failed: 0, skipped: 0 };
+  const summary: RunSummary = { success: 0, already: 0, failed: 0, skipped: 0, needsVerify: 0 };
   const failedIds: string[] = [];
+  const verifyIds: string[] = [];
 
   for (const account of targets) {
     if (!canCheckin(account)) {
@@ -56,6 +57,10 @@ async function doRun({ accountIds, kind }: RunOptions): Promise<RunOutcome> {
       await refreshAccountBalance(account).catch(() => {});
     } else if (result.status === "already_checked") {
       summary.already++;
+    } else if (result.status === "needs_verification") {
+      // 需用户到站点完成人机验证：不计失败、不进重试队列（重试也过不了）
+      summary.needsVerify++;
+      verifyIds.push(account.id);
     } else {
       summary.failed++;
       failedIds.push(account.id);
@@ -63,7 +68,7 @@ async function doRun({ accountIds, kind }: RunOptions): Promise<RunOutcome> {
   }
 
   await patchSchedulerState({ lastRun: { at: Date.now(), kind, summary } });
-  await notifyIfEnabled(kind, summary, targets, failedIds);
+  await notifyIfEnabled(kind, summary, targets, failedIds, verifyIds);
 
   return { summary, failedIds };
 }
@@ -81,11 +86,12 @@ async function notifyIfEnabled(
   summary: RunSummary,
   targets: Account[],
   failedIds: string[],
+  verifyIds: string[],
 ): Promise<void> {
   const settings = await checkinSettingsItem.getValue();
   // 手动单账号操作 UI 上有即时反馈，不再弹系统通知
   if (!settings.notifyOnFinish || kind === "manual") return;
-  if (summary.success + summary.failed === 0) return;
+  if (summary.success + summary.failed + summary.needsVerify === 0) return;
 
   const failedNames = targets
     .filter((a) => failedIds.includes(a.id))
@@ -93,6 +99,11 @@ async function notifyIfEnabled(
     .join("、");
   const lines = [formatRunSummary(summary)];
   if (failedNames) lines.push(`失败：${failedNames}`);
+  const verifyNames = targets
+    .filter((a) => verifyIds.includes(a.id))
+    .map((a) => a.name)
+    .join("、");
+  if (verifyNames) lines.push(`待验证：${verifyNames}`);
 
   try {
     await browser.notifications.create({

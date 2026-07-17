@@ -55,7 +55,7 @@ export interface Tag {
   createdAt: number;
 }
 
-export type CheckinStatus = "success" | "already_checked" | "failed";
+export type CheckinStatus = "success" | "already_checked" | "failed" | "needs_verification";
 
 export interface ProviderResult {
   status: CheckinStatus;
@@ -77,6 +77,8 @@ export interface RunSummary {
   already: number;
   failed: number;
   skipped: number;
+  /** 被站点人机验证挡住、需用户到页面手动完成——不计入 failed，不参与自动重试 */
+  needsVerify: number;
 }
 
 export interface RunOutcome {

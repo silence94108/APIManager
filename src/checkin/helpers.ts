@@ -17,6 +17,7 @@ export function isCheckedToday(
 }
 
 export function formatRunSummary(s: RunSummary, opts?: { withSkipped?: boolean }): string {
-  const base = `成功 ${s.success} · 已签 ${s.already} · 失败 ${s.failed}`;
+  let base = `成功 ${s.success} · 已签 ${s.already} · 失败 ${s.failed}`;
+  if (s.needsVerify > 0) base += ` · 待验证 ${s.needsVerify}`;
   return opts?.withSkipped ? `${base} · 跳过 ${s.skipped}` : base;
 }
