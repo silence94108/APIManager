@@ -98,13 +98,14 @@ export function Toggle({
 
 // ── 状态件 ────────────────────────────────────────────
 
-export type DotStatus = "checked" | "unchecked" | "failed" | "expired" | "disabled";
+export type DotStatus = "checked" | "unchecked" | "failed" | "expired" | "verify" | "disabled";
 
 const DOT_CLASS: Record<DotStatus, string> = {
   checked: "bg-phos dot-phos",
   unchecked: "bg-ink-faint",
   failed: "bg-signal",
   expired: "bg-amber",
+  verify: "bg-amber",
   disabled: "bg-ink-faint/40",
 };
 
@@ -113,6 +114,7 @@ export const DOT_TITLE: Record<DotStatus, string> = {
   unchecked: "今日未签到",
   failed: "签到失败",
   expired: "Token 已过期",
+  verify: "需完成人机验证",
   disabled: "已禁用",
 };
 
@@ -133,6 +135,7 @@ export function dotStatus(account: Account, results?: CheckinResults, today?: st
     const record = results[account.id];
     if (isCheckedToday(record, today)) return "checked";
     if (record?.date === today && record.status === "failed") return "failed";
+    if (record?.date === today && record.status === "needs_verification") return "verify";
   }
   return "unchecked";
 }

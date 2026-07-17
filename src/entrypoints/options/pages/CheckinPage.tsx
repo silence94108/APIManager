@@ -16,6 +16,7 @@ const STATUS_LABELS: Record<CheckinStatus, { text: string; tone: "phos" | "amber
   success: { text: "成功", tone: "phos" },
   already_checked: { text: "已签", tone: "mute" },
   failed: { text: "失败", tone: "signal" },
+  needs_verification: { text: "待验证", tone: "amber" },
 };
 
 function fmtTime(ts?: number): string {
@@ -140,7 +141,7 @@ export default function CheckinPage() {
             <dt className="text-ink-faint">上次结果</dt>
             <dd className="readout text-ink">
               {schedulerState?.lastRun
-                ? `✓${schedulerState.lastRun.summary.success} ·${schedulerState.lastRun.summary.already} ✗${schedulerState.lastRun.summary.failed}`
+                ? `✓${schedulerState.lastRun.summary.success} ·${schedulerState.lastRun.summary.already} ✗${schedulerState.lastRun.summary.failed}${schedulerState.lastRun.summary.needsVerify > 0 ? ` ⚠${schedulerState.lastRun.summary.needsVerify}` : ""}`
                 : "—"}
             </dd>
           </div>

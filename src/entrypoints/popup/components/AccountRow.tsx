@@ -42,6 +42,10 @@ export default function AccountRow({
         toast(`${account.name} 签到成功`);
       } else if (record.status === "already_checked") {
         toast(`${account.name} 今天已经签过啦`);
+      } else if (record.status === "needs_verification") {
+        // 人机验证只能真人在站点完成——直接打开站点，把"勾一下"交还用户
+        toast(`${account.name} 需完成人机验证，已为你打开站点`, "err");
+        window.open(account.url);
       } else {
         toast(`${account.name} 签到失败${record.message ? `：${record.message}` : ""}`, "err");
       }
