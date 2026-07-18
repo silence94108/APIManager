@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn, ToastHost } from "@/ui/components";
 import AccountsPage from "./pages/AccountsPage";
 import CheckinPage from "./pages/CheckinPage";
@@ -27,10 +27,19 @@ export default function App() {
     setActive(key);
     location.hash = key;
   };
+  // 前进/后退或外部改 hash 时，同步选中的选项卡
+  useEffect(() => {
+    const onHashChange = () => {
+      const hash = location.hash.slice(1);
+      if (NAV.some((n) => n.key === hash)) setActive(hash as NavKey);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
   const ActivePage = NAV.find((n) => n.key === active)!.page;
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-5xl">
+    <div className="mx-auto flex min-h-screen max-w-7xl">
       <aside className="w-48 shrink-0 border-r border-line p-4">
         <p className="readout mb-6 text-[15px] tracking-wide text-phos">
           API<span className="text-ink">Manager</span>
