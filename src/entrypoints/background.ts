@@ -4,6 +4,7 @@ import { runCheckin } from "@/checkin/runner";
 import { onMessage } from "@/messaging/protocol";
 import { getAccount } from "@/storage/accounts";
 import { accountsItem, schedulerStateItem } from "@/storage/items";
+import { BALANCE_SITE_TYPES } from "@/types";
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -26,9 +27,12 @@ export default defineBackground(() => {
   });
 
   onMessage("refreshAllBalances", async () => {
-    // 仅凭证账号（token 模式未填 token）没有接口可调，不参与批量刷新
+    // 无余额接口（other）或仅凭证账号（token 模式未填 token）不参与批量刷新
     const accounts = (await accountsItem.getValue()).filter(
-      (a) => !a.disabled && (a.authType !== "token" || a.accessToken),
+      (a) =>
+        !a.disabled &&
+        BALANCE_SITE_TYPES.includes(a.siteType) &&
+        (a.authType !== "token" || a.accessToken),
     );
     return refreshBalances(accounts);
   });

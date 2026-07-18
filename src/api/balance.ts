@@ -16,8 +16,23 @@ interface VoApiInfoResponse {
   data?: { basicBalance?: number | string; bindBalance?: number | string };
 }
 
+interface Sub2ApiAuthMeResponse {
+  code?: number;
+  message?: string;
+  data?: { balance?: number | string | null };
+}
+
 /** 按站点类型拉当前余额（USD） */
 export async function fetchBalance(account: Account): Promise<number> {
+  if (account.siteType === "sub2api") {
+    // sub2api 信封响应 {code, message, data}；code 0 为成功，balance 直接是美元额度
+    const res = await siteFetch<Sub2ApiAuthMeResponse>(account, "/api/v1/auth/me");
+    if (res.code !== 0) throw new ApiError(0, res.message || "获取账号信息失败");
+    const usd = Number(res.data?.balance ?? 0);
+    if (Number.isNaN(usd)) throw new ApiError(0, "余额字段解析失败");
+    return usd;
+  }
+
   if (account.siteType === "voapi-v2") {
     const res = await siteFetch<VoApiInfoResponse>(account, "/api/user/info", {
       rawToken: true,

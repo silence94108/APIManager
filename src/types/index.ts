@@ -1,5 +1,5 @@
 /** 站点类型：内部统一小写；导入 all-api-hub 备份时映射其原始枚举（含大写 "Veloera"） */
-export const SITE_TYPES = ["new-api", "veloera", "voapi-v2", "anyrouter"] as const;
+export const SITE_TYPES = ["new-api", "veloera", "voapi-v2", "anyrouter", "sub2api", "other"] as const;
 export type SiteType = (typeof SITE_TYPES)[number];
 
 export const SITE_TYPE_LABELS: Record<SiteType, string> = {
@@ -7,7 +7,21 @@ export const SITE_TYPE_LABELS: Record<SiteType, string> = {
   veloera: "Veloera",
   "voapi-v2": "VoAPI v2",
   anyrouter: "AnyRouter",
+  sub2api: "Sub2API",
+  other: "其他",
 };
+
+/** 支持签到的站点类型——sub2api 无内置签到，other 为通用记录型，均排除 */
+export const CHECKIN_SITE_TYPES: SiteType[] = ["new-api", "veloera", "voapi-v2", "anyrouter"];
+
+/** 支持余额查询的站点类型——other 为纯记录型，不拉余额 */
+export const BALANCE_SITE_TYPES: SiteType[] = [
+  "new-api",
+  "veloera",
+  "voapi-v2",
+  "anyrouter",
+  "sub2api",
+];
 
 /** anyrouter 固定 cookie（复用浏览器登录态），其余默认 token */
 export type AuthType = "token" | "cookie";

@@ -2,6 +2,7 @@ import type { SiteType } from "@/types";
 import type { CheckinProvider } from "../types";
 import { anyrouterProvider } from "./anyrouter";
 import { newApiProvider } from "./newApi";
+import { unsupportedCheckinProvider } from "./unsupported";
 import { veloeraProvider } from "./veloera";
 import { voapiV2Provider } from "./voapiV2";
 
@@ -10,6 +11,8 @@ const providers: Record<SiteType, CheckinProvider> = {
   veloera: veloeraProvider,
   anyrouter: anyrouterProvider,
   "voapi-v2": voapiV2Provider,
+  sub2api: unsupportedCheckinProvider,
+  other: unsupportedCheckinProvider,
 };
 
 export function getProvider(siteType: SiteType): CheckinProvider {

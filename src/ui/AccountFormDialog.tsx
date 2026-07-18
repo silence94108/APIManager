@@ -6,6 +6,7 @@ import type { DetectedAccount } from "@/detect/types";
 import {
   OAUTH_PROVIDER_LABELS,
   OAUTH_PROVIDERS,
+  BALANCE_SITE_TYPES,
   SITE_TYPES,
   SITE_TYPE_LABELS,
   type Account,
@@ -128,6 +129,11 @@ export function AccountFormDialog({
   const pendingRef = useRef<(() => void) | null>(null);
   const vaultMeta = useStorageItem(vaultMetaItem);
   const isAnyrouter = form.siteType === "anyrouter";
+  // sub2api：token 拉余额但无「兼容用户 ID」概念；other：纯记录，token/userId 均不强制
+  const isSub2api = form.siteType === "sub2api";
+  const isOther = form.siteType === "other";
+  const requiresUserId = !isAnyrouter && !isSub2api && !isOther;
+  const requiresToken = !isAnyrouter && !isOther;
   const set = (patch: Partial<FormState>) => setForm((prev) => ({ ...prev, ...patch }));
 
   function requireUnlock(action: () => void) {
@@ -163,9 +169,9 @@ export function AccountFormDialog({
     if (!isValidSiteUrl(form.url)) next.url = "URL 无效";
     // 仅凭证账号放宽：有凭证且 token / 用户 ID 均留空 → 只做记录，不参与余额签到
     const credentialOnly = hasCredential && !form.accessToken.trim() && !form.userId.trim();
-    if (!isAnyrouter && !credentialOnly) {
-      if (!form.accessToken.trim()) next.accessToken = "token 模式必填";
-      if (!form.userId.trim()) next.userId = "必填（站点后台的用户 ID）";
+    if (!credentialOnly) {
+      if (requiresToken && !form.accessToken.trim()) next.accessToken = "token 模式必填";
+      if (requiresUserId && !form.userId.trim()) next.userId = "必填（站点后台的用户 ID）";
     }
     if (form.credKind === "password") {
       if (!form.credUsername.trim()) next.credUsername = "必填";
@@ -219,8 +225,12 @@ export function AccountFormDialog({
     const saved = await saveAccount(draft);
     toast(form.id ? "账号已更新" : "账号已添加");
     onClose();
-    // 新增账号后台顺手拉一次余额，不阻塞关闭；仅凭证账号没有接口可调，跳过
-    if (!form.id && (saved.authType !== "token" || saved.accessToken)) {
+    // 新增账号后台顺手拉一次余额，不阻塞关闭；无余额接口 / 仅凭证账号跳过
+    if (
+      !form.id &&
+      BALANCE_SITE_TYPES.includes(saved.siteType) &&
+      (saved.authType !== "token" || saved.accessToken)
+    ) {
       void sendMessage("refreshBalance", saved.id).then((res) => {
         if (!res.ok) toast(`${saved.name} 余额拉取失败：${res.error}`, "err");
       });
@@ -261,8 +271,16 @@ export function AccountFormDialog({
           </Select>
         </Field>
         <Field
-          label="用户 ID"
-          hint={isAnyrouter ? "选填——AnyRouter 走浏览器登录态" : "站点「个人设置」页的数字 ID"}
+          label={requiresUserId ? "用户 ID" : "用户 ID（选填）"}
+          hint={
+            isAnyrouter
+              ? "选填——AnyRouter 走浏览器登录态"
+              : isSub2api
+                ? "选填——Sub2API 无需兼容用户 ID"
+                : isOther
+                  ? "选填——其他类型仅作记录"
+                  : "站点「个人设置」页的数字 ID"
+          }
         >
           <Input value={form.userId} onChange={(e) => set({ userId: e.target.value })} placeholder="1234" />
           {errors.userId && <span className="text-[11px] text-signal">{errors.userId}</span>}
@@ -270,19 +288,23 @@ export function AccountFormDialog({
 
         <div className="sm:col-span-2">
           <Field
-            label={isAnyrouter ? "Access Token（选填）" : "Access Token"}
+            label={requiresToken ? "Access Token" : "Access Token（选填）"}
             hint={
               isAnyrouter
                 ? "AnyRouter 签到复用浏览器 Cookie，请保持该站在浏览器中已登录"
-                : form.siteType === "voapi-v2"
-                  ? "VoAPI v2 使用页面 JWT（会过期，过期后在此更新）"
-                  : "站点「个人设置」生成的访问令牌"
+                : isSub2api
+                  ? "Sub2API 的访问令牌，用于查询余额"
+                  : isOther
+                    ? "其他类型仅作记录，可留空"
+                    : form.siteType === "voapi-v2"
+                      ? "VoAPI v2 使用页面 JWT（会过期，过期后在此更新）"
+                      : "站点「个人设置」生成的访问令牌"
             }
           >
             <Input
               value={form.accessToken}
               onChange={(e) => set({ accessToken: e.target.value })}
-              placeholder={isAnyrouter ? "留空即可" : "sk-… / eyJ…"}
+              placeholder={requiresToken ? "sk-… / eyJ…" : "留空即可"}
               type="password"
               autoComplete="off"
             />

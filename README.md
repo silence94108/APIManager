@@ -21,6 +21,8 @@
 | Veloera | ✅ | Access Token |
 | VoAPI v2 | ✅ | 页面 JWT（会过期，过期后扩展会标黄提醒更新） |
 | AnyRouter | ✅ | 浏览器 Cookie（需保持该站在浏览器中已登录） |
+| Sub2API | ❌（无内置签到） | Access Token（仅查余额） |
+| 其他 | ❌ | 通用记录型——仅账号管理，不拉余额不签到 |
 
 ## 开发
 

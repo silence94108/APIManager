@@ -2,7 +2,7 @@ import { useState } from "react";
 import { canCheckin } from "@/checkin/helpers";
 import { sendMessage } from "@/messaging/protocol";
 import { checkinResultsItem } from "@/storage/items";
-import type { Account, CheckinResults } from "@/types";
+import { BALANCE_SITE_TYPES, type Account, type CheckinResults } from "@/types";
 import { formatUsd } from "@/utils/quota";
 import { cn, dotStatus, Spinner, StatusDot, toast } from "@/ui/components";
 
@@ -20,6 +20,7 @@ export default function AccountRow({
 
   const status = dotStatus(account, results, today);
   const eligible = canCheckin(account);
+  const hasBalance = BALANCE_SITE_TYPES.includes(account.siteType);
 
   async function checkin() {
     setBusy("checkin");
@@ -91,9 +92,11 @@ export default function AccountRow({
                 ⚡
               </RowAction>
             )}
-            <RowAction title="刷新余额" onClick={refresh}>
-              ↻
-            </RowAction>
+            {hasBalance && (
+              <RowAction title="刷新余额" onClick={refresh}>
+                ↻
+              </RowAction>
+            )}
             <RowAction title="打开站点" onClick={() => window.open(account.url)}>
               ↗
             </RowAction>

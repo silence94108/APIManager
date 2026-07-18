@@ -8,6 +8,7 @@ const SITE_TYPE_MAP: Record<string, SiteType> = {
   Veloera: "veloera",
   "voapi-v2": "voapi-v2",
   anyrouter: "anyrouter",
+  sub2api: "sub2api",
 };
 
 interface AahAccountShape {
