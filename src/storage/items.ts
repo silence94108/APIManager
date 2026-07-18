@@ -69,13 +69,24 @@ export const DEFAULT_TEST_MODELS = [
 ];
 
 export interface ModelTestSettings {
-  /** 待测模型列表 */
+  /** 模型目录——已知的全部模型（拉站点会并入这里，用户可增删） */
   models: string[];
+  /** 勾选待测的模型子集；缺省（老数据）视为只勾选 DEFAULT_TEST_MODELS */
+  selected?: string[];
   /** 按 accountId 记忆的手填 API Key（自动拉取失败时用户补的） */
   manualKeys: Record<string, string>;
+  /** 测试节奏档位——请求间的拟人停顿区间，防止零间隔连发被风控识别为脚本 */
+  pacing: "fast" | "normal" | "safe";
 }
 
 export const modelTestSettingsItem = storage.defineItem<ModelTestSettings>(
   "local:modelTestSettings",
-  { fallback: { models: DEFAULT_TEST_MODELS, manualKeys: {} } },
+  {
+    fallback: {
+      models: DEFAULT_TEST_MODELS,
+      selected: DEFAULT_TEST_MODELS,
+      manualKeys: {},
+      pacing: "safe",
+    },
+  },
 );
