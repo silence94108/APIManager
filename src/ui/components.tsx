@@ -204,6 +204,9 @@ export function EmptyState({ icon, text, action }: { icon: string; text: string;
 
 // ── Dialog ────────────────────────────────────────────
 
+/** 打开顺序栈：嵌套弹窗（如表单里弹解锁框）时 ESC 只关最上层 */
+const dialogStack: symbol[] = [];
+
 export function Dialog({
   open,
   onClose,
@@ -219,9 +222,16 @@ export function Dialog({
 }) {
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const id = Symbol();
+    dialogStack.push(id);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && dialogStack[dialogStack.length - 1] === id) onClose();
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      dialogStack.splice(dialogStack.indexOf(id), 1);
+      window.removeEventListener("keydown", onKey);
+    };
   }, [open, onClose]);
 
   if (!open) return null;

@@ -26,7 +26,10 @@ export default defineBackground(() => {
   });
 
   onMessage("refreshAllBalances", async () => {
-    const accounts = (await accountsItem.getValue()).filter((a) => !a.disabled);
+    // 仅凭证账号（token 模式未填 token）没有接口可调，不参与批量刷新
+    const accounts = (await accountsItem.getValue()).filter(
+      (a) => !a.disabled && (a.authType !== "token" || a.accessToken),
+    );
     return refreshBalances(accounts);
   });
 

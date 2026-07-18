@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { deleteAccount } from "@/storage/accounts";
 import { accountsItem, groupsItem, tagsItem } from "@/storage/items";
-import { SITE_TYPE_LABELS, type Account } from "@/types";
+import { SITE_TYPE_LABELS, OAUTH_PROVIDER_LABELS, type Account } from "@/types";
 import { formatUsd } from "@/utils/quota";
 import {
   AccountFormDialog,
@@ -85,6 +85,15 @@ export default function AccountsPage() {
                           {account.tokenState === "expired" && (
                             <span className="ml-1.5">
                               <Badge tone="amber">Token 过期</Badge>
+                            </span>
+                          )}
+                          {account.credential && (
+                            <span className="ml-1.5">
+                              <Badge tone="mute">
+                                {account.credential.kind === "password"
+                                  ? "账密"
+                                  : `OAuth·${OAUTH_PROVIDER_LABELS[account.credential.provider]}`}
+                              </Badge>
                             </span>
                           )}
                         </p>

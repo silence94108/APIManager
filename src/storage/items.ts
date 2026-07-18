@@ -6,6 +6,7 @@ import type {
   Group,
   SchedulerState,
   Tag,
+  VaultMeta,
 } from "@/types";
 
 export const DEFAULT_CHECKIN_SETTINGS: CheckinSettings = {
@@ -42,3 +43,12 @@ export const checkinResultsItem = storage.defineItem<CheckinResults>(
   "local:checkinResults",
   { fallback: {} },
 );
+
+export const vaultMetaItem = storage.defineItem<VaultMeta | null>("local:vaultMeta", {
+  fallback: null,
+});
+
+/** 解锁后的 AES 密钥（raw base64）——只放 session 区，浏览器关闭即清空，永不落盘 */
+export const vaultKeyItem = storage.defineItem<string | null>("session:vaultKey", {
+  fallback: null,
+});

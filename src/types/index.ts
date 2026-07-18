@@ -12,6 +12,33 @@ export const SITE_TYPE_LABELS: Record<SiteType, string> = {
 /** anyrouter 固定 cookie（复用浏览器登录态），其余默认 token */
 export type AuthType = "token" | "cookie";
 
+export const OAUTH_PROVIDERS = ["linuxdo", "github", "other"] as const;
+export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
+
+export const OAUTH_PROVIDER_LABELS: Record<OAuthProvider, string> = {
+  linuxdo: "LinuxDo",
+  github: "GitHub",
+  other: "其他",
+};
+
+/** AES-GCM 密文（字段均 base64） */
+export interface EncryptedBlob {
+  iv: string;
+  ciphertext: string;
+}
+
+/** 站点登录凭证：密码经 vault 加密，OAuth 只记录授权信息 */
+export type Credential =
+  | { kind: "password"; username: string; passwordEnc: EncryptedBlob }
+  | { kind: "oauth"; provider: OAuthProvider; identity?: string };
+
+/** vault 元数据——密钥永不落盘，只存盐和用于验证主密码的校验密文 */
+export interface VaultMeta {
+  salt: string;
+  verifier: EncryptedBlob;
+  createdAt: number;
+}
+
 export interface Account {
   id: string;
   name: string;
@@ -26,6 +53,8 @@ export interface Account {
   /** 预留：导入 all-api-hub cookieAuth.sessionCookie 时保存，当前不用于请求 */
   sessionCookie?: string;
   username?: string;
+  /** 站点登录凭证（账密 / OAuth 授权记录）；有凭证时 token 与用户 ID 可缺省（仅记录，不参与余额签到） */
+  credential?: Credential;
   groupId: string | null;
   tagIds: string[];
   notes?: string;

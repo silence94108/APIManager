@@ -149,13 +149,16 @@ function OwnBackupCard() {
     toast(
       `${modeRef.current === "replace" ? "覆盖" : "合并"}导入完成：账号 ${report.accounts} · 分组 ${report.groups} · 标签 ${report.tags}`,
     );
+    if (report.droppedPasswords > 0) {
+      toast(`两边主密码不同，${report.droppedPasswords} 个账号的已存密码未导入`, "err");
+    }
   });
 
   return (
     <section className="rounded-lg border border-line bg-panel p-4">
       <h2 className="readout mb-1 text-[14px] text-ink">APIManager 自身备份</h2>
       <p className="mb-3 text-[12px] text-ink-faint">
-        备份包含账号（含 Token）、分组、标签与签到设置——文件含敏感信息，请妥善保管。
+        备份包含账号（含 Token 与加密后的登录密码）、分组、标签与签到设置——Token 为明文，请妥善保管；密码为密文，恢复后需用同一主密码解锁。
       </p>
 
       {picker.input}

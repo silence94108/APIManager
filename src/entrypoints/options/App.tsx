@@ -4,16 +4,24 @@ import AccountsPage from "./pages/AccountsPage";
 import CheckinPage from "./pages/CheckinPage";
 import GroupsTagsPage from "./pages/GroupsTagsPage";
 import ImportExportPage from "./pages/ImportExportPage";
+import SecurityPage from "./pages/SecurityPage";
 
 const NAV = [
   { key: "accounts", icon: "▦", label: "账号", page: AccountsPage },
   { key: "groups", icon: "▣", label: "分组与标签", page: GroupsTagsPage },
   { key: "checkin", icon: "◔", label: "自动签到", page: CheckinPage },
+  { key: "security", icon: "◈", label: "安全", page: SecurityPage },
   { key: "data", icon: "⇅", label: "数据", page: ImportExportPage },
 ] as const;
 
+type NavKey = (typeof NAV)[number]["key"];
+
 export default function App() {
-  const [active, setActive] = useState<(typeof NAV)[number]["key"]>("accounts");
+  // 支持 options.html#security 之类的锚点直达（popup 表单引导设置主密码用）
+  const [active, setActive] = useState<NavKey>(() => {
+    const hash = location.hash.slice(1);
+    return NAV.some((n) => n.key === hash) ? (hash as NavKey) : "accounts";
+  });
   const ActivePage = NAV.find((n) => n.key === active)!.page;
 
   return (
