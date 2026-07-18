@@ -13,7 +13,7 @@ import { setGroupCollapsed } from "@/storage/groupsTags";
 import type { Account, Group } from "@/types";
 import { localDayString } from "@/utils/day";
 import { formatUsd, sumBalanceUsd } from "@/utils/quota";
-import { AccountFormDialog, fromDetected, type FormState } from "@/ui/AccountFormDialog";
+import { AccountFormDialog, fromDetected, mergeDetectedIntoAccount, type FormState } from "@/ui/AccountFormDialog";
 import { Button, cn, EmptyState, Spinner, ToastHost, toast } from "@/ui/components";
 import { useStorageItem } from "@/ui/hooks";
 import AccountRow from "./components/AccountRow";
@@ -109,11 +109,20 @@ export default function App() {
     setBusyAll("detect");
     try {
       const result = await detectCurrentSite();
-      if (result.ok) {
+      if (!result.ok) {
+        toast(result.reason, "err");
+        return;
+      }
+      // 判重（url + userId，与导入判重同一契约）：已存在则转编辑并载入最新登录态
+      const dup = (accounts ?? []).find(
+        (a) => a.url === result.account.url && a.userId === result.account.userId,
+      );
+      if (dup) {
+        toast(`「${dup.name}」已存在，已载入最新登录态待确认更新`);
+        setDetected(mergeDetectedIntoAccount(dup, result.account));
+      } else {
         // 直接在 popup 内弹预填表单，不再跳设置页
         setDetected(fromDetected(result.account));
-      } else {
-        toast(result.reason, "err");
       }
     } finally {
       setBusyAll(null);

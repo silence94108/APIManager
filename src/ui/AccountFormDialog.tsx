@@ -113,6 +113,22 @@ export function fromDetected(d: DetectedAccount): FormState {
   };
 }
 
+/**
+ * 已存在账号 + 本次识别草稿 → 编辑态表单：
+ * 保留原账号的分组/标签/备注/凭证/名称，用识别到的新登录态覆盖 token / favicon / 用户名，
+ * 并清除过期标记（重新识别意味着登录态已刷新）。带 id 走更新而非新建。
+ */
+export function mergeDetectedIntoAccount(existing: Account, d: DetectedAccount): FormState {
+  const base = toForm(existing);
+  return {
+    ...base,
+    siteType: d.siteType,
+    accessToken: d.accessToken ?? base.accessToken,
+    username: d.username?.trim() || base.username,
+    faviconUrl: d.faviconUrl ?? base.faviconUrl,
+  };
+}
+
 /** 添加/编辑账号弹窗——popup 与 options 共用；popup 窄视口下自动落成单列 */
 export function AccountFormDialog({
   initial,

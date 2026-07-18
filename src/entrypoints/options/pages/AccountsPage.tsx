@@ -125,6 +125,16 @@ export default function AccountsPage() {
                   </p>
                 </div>
                 <div className="flex gap-1.5 opacity-0 transition group-hover:opacity-100">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      void browser.tabs.create({ url: account.url });
+                      toast("已打开站点——登录后点扩展弹窗的「识别」即可更新该账号");
+                    }}
+                    title="打开站点后用扩展弹窗识别，可刷新登录态"
+                  >
+                    重新识别
+                  </Button>
                   <Button size="sm" onClick={() => setEditing(toForm(account))}>
                     编辑
                   </Button>
