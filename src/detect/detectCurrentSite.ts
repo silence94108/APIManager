@@ -57,6 +57,7 @@ export async function detectCurrentSite(): Promise<DetectResult> {
     ok: true,
     account: {
       url: origin,
+      title: tab.title?.trim() || undefined,
       siteType,
       userId: session.userId,
       accessToken: session.accessToken,

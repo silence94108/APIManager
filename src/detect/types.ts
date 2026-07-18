@@ -4,6 +4,8 @@ import type { SiteType } from "@/types";
 export interface DetectedAccount {
   /** 规范化 origin，如 https://api.example.com */
   url: string;
+  /** 当前标签页标题——预填站点名称用，读不到则空 */
+  title?: string;
   siteType: SiteType;
   /** 站点内用户 id，读不到则空串 */
   userId: string;

@@ -88,13 +88,15 @@ export function toForm(account: Account): FormState {
   };
 }
 
-/** 识别草稿 → 新增表单预填态：站点名默认取 hostname，其余按识别结果填，用户可改 */
+/** 识别草稿 → 新增表单预填态：站点名优先用网页标题，读不到则取 hostname，其余按识别结果填，用户可改 */
 export function fromDetected(d: DetectedAccount): FormState {
-  let name = "";
-  try {
-    name = new URL(d.url).hostname;
-  } catch {
-    name = d.url;
+  let name = d.title?.trim() ?? "";
+  if (!name) {
+    try {
+      name = new URL(d.url).hostname;
+    } catch {
+      name = d.url;
+    }
   }
   return {
     ...EMPTY_FORM,
