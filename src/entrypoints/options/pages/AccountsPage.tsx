@@ -16,6 +16,7 @@ import {
   ConfirmDialog,
   dotStatus,
   EmptyState,
+  SiteAvatar,
   StatusDot,
   toast,
 } from "@/ui/components";
@@ -61,77 +62,79 @@ export default function AccountsPage() {
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-line">
-          <table className="w-full text-left text-[13px]">
-            <thead>
-              <tr className="border-b border-line text-[11px] uppercase tracking-[0.12em] text-ink-faint">
-                <th className="px-3 py-2 font-normal">站点</th>
-                <th className="px-3 py-2 font-normal">类型</th>
-                <th className="px-3 py-2 font-normal">分组</th>
-                <th className="px-3 py-2 font-normal">标签</th>
-                <th className="px-3 py-2 text-right font-normal">余额</th>
-                <th className="px-3 py-2 text-right font-normal">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((account) => (
-                <tr key={account.id} className="border-b border-line/50 last:border-0 hover:bg-raised/40">
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <StatusDot status={dotStatus(account)} />
-                      <div className="min-w-0">
-                        <p className={cn("truncate", account.disabled && "text-ink-faint line-through")}>
-                          {account.name}
-                          {account.tokenState === "expired" && (
-                            <span className="ml-1.5">
-                              <Badge tone="amber">Token 过期</Badge>
-                            </span>
-                          )}
-                          {account.credential && (
-                            <span className="ml-1.5">
-                              <Badge tone="mute">
-                                {account.credential.kind === "password"
-                                  ? "账密"
-                                  : `OAuth·${OAUTH_PROVIDER_LABELS[account.credential.provider]}`}
-                              </Badge>
-                            </span>
-                          )}
-                        </p>
-                        <p className="readout truncate text-[11px] text-ink-faint">{account.url}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-ink-mute">{SITE_TYPE_LABELS[account.siteType]}</td>
-                  <td className="px-3 py-2 text-ink-mute">{groupName(account.groupId)}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-wrap gap-1">
-                      {account.tagIds.map((id) => {
-                        const name = tagName(id);
-                        return name ? (
-                          <Badge key={id} tone="mute">
-                            {name}
-                          </Badge>
-                        ) : null;
-                      })}
-                    </div>
-                  </td>
-                  <td className="readout px-3 py-2 text-right text-ink">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {accounts.map((account) => (
+            <div
+              key={account.id}
+              className={cn(
+                "group flex flex-col gap-3 rounded-lg border border-line bg-panel p-3.5 transition hover:border-ink-faint/40",
+                account.disabled && "opacity-60",
+              )}
+            >
+              {/* 头部：头像 + 名称/URL + 状态点 */}
+              <div className="flex items-start gap-2.5">
+                <SiteAvatar name={account.name} faviconUrl={account.faviconUrl} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p
+                      className={cn(
+                        "truncate text-[13px] text-ink",
+                        account.disabled && "line-through",
+                      )}
+                    >
+                      {account.name}
+                    </p>
+                  </div>
+                  <p className="readout truncate text-[11px] text-ink-faint">{account.url}</p>
+                </div>
+                <StatusDot status={dotStatus(account)} />
+              </div>
+
+              {/* 徽章行：类型 + 过期 + 凭证 */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge tone="mute">{SITE_TYPE_LABELS[account.siteType]}</Badge>
+                {account.tokenState === "expired" && <Badge tone="amber">Token 过期</Badge>}
+                {account.credential && (
+                  <Badge tone="mute">
+                    {account.credential.kind === "password"
+                      ? "账密"
+                      : `OAuth·${OAUTH_PROVIDER_LABELS[account.credential.provider]}`}
+                  </Badge>
+                )}
+              </div>
+
+              {/* 分组 + 标签 */}
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-ink-mute">
+                <span className="text-ink-faint">{groupName(account.groupId)}</span>
+                {account.tagIds.map((id) => {
+                  const name = tagName(id);
+                  return name ? (
+                    <Badge key={id} tone="mute">
+                      {name}
+                    </Badge>
+                  ) : null;
+                })}
+              </div>
+
+              {/* 底部：余额 + 操作 */}
+              <div className="mt-auto flex items-end justify-between border-t border-line/60 pt-2.5">
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-ink-faint">余额</p>
+                  <p className="readout text-[15px] text-ink">
                     {account.balance ? formatUsd(account.balance.usd) : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <div className="flex justify-end gap-1.5">
-                      <Button size="sm" onClick={() => setEditing(toForm(account))}>
-                        编辑
-                      </Button>
-                      <Button size="sm" variant="danger" onClick={() => setDeleting(account)}>
-                        删除
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </p>
+                </div>
+                <div className="flex gap-1.5 opacity-0 transition group-hover:opacity-100">
+                  <Button size="sm" onClick={() => setEditing(toForm(account))}>
+                    编辑
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => setDeleting(account)}>
+                    删除
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

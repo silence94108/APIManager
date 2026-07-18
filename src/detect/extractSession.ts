@@ -4,6 +4,8 @@ export interface PageSession {
   accessToken?: string;
   username?: string;
   hasVoapiStore: boolean;
+  /** 页面 favicon 绝对 URL，读不到则 undefined */
+  faviconUrl?: string;
 }
 
 /**
@@ -40,6 +42,22 @@ export async function extractSessionFromPage(): Promise<PageSession | null> {
   const asStr = (value: unknown): string | undefined => {
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
   };
+
+  // favicon：优先取页面声明的 <link rel="icon">（末个通常分辨率最高），末尾兜底 /favicon.ico
+  const readFavicon = (): string | undefined => {
+    try {
+      const links = Array.from(
+        document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]'),
+      );
+      const href = links.map((l) => l.getAttribute("href")).filter(Boolean).pop();
+      // href 可能是相对路径 / 协议相对，用页面 URL 绝对化
+      if (href) return new URL(href, location.href).href;
+      return new URL("/favicon.ico", location.origin).href;
+    } catch {
+      return undefined;
+    }
+  };
+  const faviconUrl = readFavicon();
 
   // voapi-v2：token 在 userStore.auth.token（raw JWT），userId 在 user.id
   const userStore = readJson("userStore");
@@ -99,5 +117,5 @@ export async function extractSessionFromPage(): Promise<PageSession | null> {
   // 什么都没读到 → 判定为未登录/无账号信息
   if (!userId && !accessToken) return null;
 
-  return { userId, accessToken, username, hasVoapiStore };
+  return { userId, accessToken, username, hasVoapiStore, faviconUrl };
 }

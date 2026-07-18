@@ -4,7 +4,7 @@ import { sendMessage } from "@/messaging/protocol";
 import { checkinResultsItem } from "@/storage/items";
 import { BALANCE_SITE_TYPES, type Account, type CheckinResults } from "@/types";
 import { formatUsd } from "@/utils/quota";
-import { cn, dotStatus, Spinner, StatusDot, toast } from "@/ui/components";
+import { cn, dotStatus, SiteAvatar, Spinner, StatusDot, toast } from "@/ui/components";
 
 export default function AccountRow({
   account,
@@ -74,6 +74,7 @@ export default function AccountRow({
       )}
     >
       <StatusDot status={status} pulse={pulse} />
+      <SiteAvatar name={account.name} faviconUrl={account.faviconUrl} size="sm" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] leading-tight text-ink">{account.name}</p>
         {account.username && (

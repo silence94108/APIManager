@@ -6,6 +6,8 @@ export interface DetectedAccount {
   url: string;
   /** 当前标签页标题——预填站点名称用，读不到则空 */
   title?: string;
+  /** 页面 favicon 绝对 URL，读不到则空 */
+  faviconUrl?: string;
   siteType: SiteType;
   /** 站点内用户 id，读不到则空串 */
   userId: string;

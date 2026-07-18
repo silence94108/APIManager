@@ -67,6 +67,8 @@ export interface Account {
   /** 预留：导入 all-api-hub cookieAuth.sessionCookie 时保存，当前不用于请求 */
   sessionCookie?: string;
   username?: string;
+  /** 站点 favicon URL——识别时从页面抽取，仅用于列表展示，读不到则空 */
+  faviconUrl?: string;
   /** 站点登录凭证（账密 / OAuth 授权记录）；有凭证时 token 与用户 ID 可缺省（仅记录，不参与余额签到） */
   credential?: Credential;
   groupId: string | null;

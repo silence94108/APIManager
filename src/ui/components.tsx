@@ -192,6 +192,62 @@ export function Spinner({ className }: { className?: string }) {
   );
 }
 
+// ── SiteAvatar：站点图标（favicon 优先，失败/缺失回退首字母色块） ──
+
+/** 名称 → 稳定 hue（0-359），用于首字母色块背景，同名站点颜色恒定 */
+function hueFromString(s: string): number {
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(hash) % 360;
+}
+
+const AVATAR_SIZES = { sm: "h-6 w-6 text-[11px]", md: "h-8 w-8 text-[13px]" } as const;
+
+export function SiteAvatar({
+  name,
+  faviconUrl,
+  size = "md",
+}: {
+  name: string;
+  faviconUrl?: string;
+  size?: keyof typeof AVATAR_SIZES;
+}) {
+  const [broken, setBroken] = useState(false);
+  const box = cn(
+    "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md",
+    AVATAR_SIZES[size],
+  );
+
+  if (faviconUrl && !broken) {
+    return (
+      <span className={cn(box, "border border-line bg-carbon")}>
+        <img
+          src={faviconUrl}
+          alt=""
+          loading="lazy"
+          className="h-full w-full object-contain"
+          onError={() => setBroken(true)}
+        />
+      </span>
+    );
+  }
+
+  const letter = name.trim().charAt(0).toUpperCase() || "?";
+  const hue = hueFromString(name || "?");
+  return (
+    <span
+      className={cn(box, "readout font-semibold")}
+      style={{
+        backgroundColor: `hsl(${hue} 45% 22%)`,
+        color: `hsl(${hue} 70% 78%)`,
+      }}
+      aria-hidden
+    >
+      {letter}
+    </span>
+  );
+}
+
 export function EmptyState({ icon, text, action }: { icon: string; text: string; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-line px-6 py-10 text-center">

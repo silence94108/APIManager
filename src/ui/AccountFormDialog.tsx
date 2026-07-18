@@ -43,6 +43,8 @@ export interface FormState {
   passwordEnc?: EncryptedBlob;
   oauthProvider: OAuthProvider;
   oauthIdentity: string;
+  /** 站点 favicon URL——透传字段，识别时带入、编辑时保留，无可编辑 UI */
+  faviconUrl?: string;
 }
 
 export const EMPTY_FORM: FormState = {
@@ -85,6 +87,7 @@ export function toForm(account: Account): FormState {
     passwordEnc: cred?.kind === "password" ? cred.passwordEnc : undefined,
     oauthProvider: cred?.kind === "oauth" ? cred.provider : "linuxdo",
     oauthIdentity: cred?.kind === "oauth" ? (cred.identity ?? "") : "",
+    faviconUrl: account.faviconUrl,
   };
 }
 
@@ -106,6 +109,7 @@ export function fromDetected(d: DetectedAccount): FormState {
     userId: d.userId,
     accessToken: d.accessToken ?? "",
     username: d.username ?? "",
+    faviconUrl: d.faviconUrl,
   };
 }
 
@@ -215,6 +219,7 @@ export function AccountFormDialog({
       userId: form.userId.trim(),
       accessToken: form.accessToken.trim() || undefined,
       username: form.username.trim() || undefined,
+      faviconUrl: form.faviconUrl,
       credential,
       groupId: form.groupId || null,
       tagIds: form.tagIds,

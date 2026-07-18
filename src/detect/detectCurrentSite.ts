@@ -58,6 +58,7 @@ export async function detectCurrentSite(): Promise<DetectResult> {
     account: {
       url: origin,
       title: tab.title?.trim() || undefined,
+      faviconUrl: session.faviconUrl,
       siteType,
       userId: session.userId,
       accessToken: session.accessToken,
