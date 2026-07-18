@@ -124,7 +124,7 @@ export default function AccountsPage() {
                     {account.balance ? formatUsd(account.balance.usd) : "—"}
                   </p>
                 </div>
-                <div className="flex gap-1.5 opacity-0 transition group-hover:opacity-100">
+                <div className="flex gap-1.5 opacity-70 transition group-hover:opacity-100 focus-within:opacity-100">
                   <Button
                     size="sm"
                     onClick={() => {
