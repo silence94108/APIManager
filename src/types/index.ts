@@ -92,7 +92,7 @@ export interface Group {
   id: string;
   name: string;
   sortOrder: number;
-  /** popup 折叠态直接持久化在组上 */
+  /** 折叠态直接持久化在组上——popup 与设置页账号列表共用 */
   collapsed: boolean;
   createdAt: number;
 }

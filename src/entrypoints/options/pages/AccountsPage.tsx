@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { deleteAccount } from "@/storage/accounts";
+import { setGroupCollapsed } from "@/storage/groupsTags";
 import { accountsItem, groupsItem, tagsItem } from "@/storage/items";
-import { SITE_TYPE_LABELS, OAUTH_PROVIDER_LABELS, type Account } from "@/types";
-import { formatUsd } from "@/utils/quota";
+import { SITE_TYPE_LABELS, OAUTH_PROVIDER_LABELS, type Account, type Group } from "@/types";
+import { formatUsd, sumBalanceUsd } from "@/utils/quota";
 import {
   AccountFormDialog,
   EMPTY_FORM,
@@ -22,6 +23,15 @@ import {
 } from "@/ui/components";
 import { useStorageItem } from "@/ui/hooks";
 
+interface Section {
+  key: string;
+  group: Group | null;
+  accounts: Account[];
+  balance: number;
+}
+
+const GRID_CLASS = "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3";
+
 export default function AccountsPage() {
   const accounts = useStorageItem(accountsItem);
   const groups = useStorageItem(groupsItem);
@@ -29,18 +39,124 @@ export default function AccountsPage() {
 
   const [editing, setEditing] = useState<FormState | null>(null);
   const [deleting, setDeleting] = useState<Account | null>(null);
-
-  const groupName = useMemo(() => {
-    const map = new Map((groups ?? []).map((g) => [g.id, g.name]));
-    return (id: string | null) => (id ? (map.get(id) ?? "—") : "未分组");
-  }, [groups]);
+  // 未分组区块的折叠态——不落在 Group 上，仅本页会话内记忆
+  const [ungroupedCollapsed, setUngroupedCollapsed] = useState(false);
 
   const tagName = useMemo(() => {
     const map = new Map((tags ?? []).map((t) => [t.id, t.name]));
     return (id: string) => map.get(id);
   }, [tags]);
 
+  // 与 popup 同一契约：分组按 sortOrder 排序、未分组垫底；空组也显示，便于看到组的存在
+  const sections = useMemo<Section[]>(() => {
+    const grouped: Section[] = [...(groups ?? [])]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((g) => {
+        const list = (accounts ?? []).filter((a) => a.groupId === g.id);
+        return { key: g.id, group: g, accounts: list, balance: sumBalanceUsd(list) };
+      });
+    const ungrouped = (accounts ?? []).filter((a) => !a.groupId);
+    if (ungrouped.length) {
+      grouped.push({
+        key: "__ungrouped",
+        group: null,
+        accounts: ungrouped,
+        balance: sumBalanceUsd(ungrouped),
+      });
+    }
+    return grouped;
+  }, [accounts, groups]);
+
   if (!accounts) return null;
+
+  const renderCard = (account: Account) => {
+    const tagBadges = account.tagIds
+      .map((id) => {
+        const name = tagName(id);
+        return name ? (
+          <Badge key={id} tone="mute">
+            {name}
+          </Badge>
+        ) : null;
+      })
+      .filter(Boolean);
+    return (
+      <div
+        key={account.id}
+        className={cn(
+          "group flex flex-col gap-3 rounded-lg border border-line bg-panel p-3.5 transition hover:border-ink-faint/40",
+          account.disabled && "opacity-60",
+        )}
+      >
+        {/* 头部：头像 + 名称/URL + 状态点 */}
+        <div className="flex items-start gap-2.5">
+          <SiteAvatar name={account.name} faviconUrl={account.faviconUrl} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <p
+                className={cn(
+                  "truncate text-[13px] text-ink",
+                  account.disabled && "line-through",
+                )}
+              >
+                {account.name}
+              </p>
+            </div>
+            <p className="readout truncate text-[11px] text-ink-faint">{account.url}</p>
+          </div>
+          <StatusDot status={dotStatus(account)} />
+        </div>
+
+        {/* 徽章行：类型 + 过期 + 凭证 */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge tone="mute">{SITE_TYPE_LABELS[account.siteType]}</Badge>
+          {account.tokenState === "expired" && <Badge tone="amber">Token 过期</Badge>}
+          {account.credential && (
+            <Badge tone="mute">
+              {account.credential.kind === "password"
+                ? "账密"
+                : `OAuth·${OAUTH_PROVIDER_LABELS[account.credential.provider]}`}
+            </Badge>
+          )}
+        </div>
+
+        {/* 标签（分组名已由区块头承载，卡片内不重复） */}
+        {tagBadges.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-ink-mute">
+            {tagBadges}
+          </div>
+        )}
+
+        {/* 底部：余额 + 操作 */}
+        <div className="mt-auto flex items-end justify-between border-t border-line/60 pt-2.5">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.12em] text-ink-faint">余额</p>
+            <p className="readout text-[15px] text-ink">
+              {account.balance ? formatUsd(account.balance.usd) : "—"}
+            </p>
+          </div>
+          <div className="flex gap-1.5 opacity-70 transition group-hover:opacity-100 focus-within:opacity-100">
+            <Button
+              size="sm"
+              onClick={() => {
+                void browser.tabs.create({ url: account.url });
+                toast("已打开站点——登录后点扩展弹窗的「识别」即可更新该账号");
+              }}
+              title="打开站点后用扩展弹窗识别，可刷新登录态"
+            >
+              重新识别
+            </Button>
+            <Button size="sm" onClick={() => setEditing(toForm(account))}>
+              编辑
+            </Button>
+            <Button size="sm" variant="danger" onClick={() => setDeleting(account)}>
+              删除
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -61,90 +177,50 @@ export default function AccountsPage() {
             </Button>
           }
         />
+      ) : (groups ?? []).length === 0 ? (
+        // 从未建过分组——保持平铺网格，不套多余的"未分组"组头
+        <div className={GRID_CLASS}>{accounts.map(renderCard)}</div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {accounts.map((account) => (
-            <div
-              key={account.id}
-              className={cn(
-                "group flex flex-col gap-3 rounded-lg border border-line bg-panel p-3.5 transition hover:border-ink-faint/40",
-                account.disabled && "opacity-60",
-              )}
-            >
-              {/* 头部：头像 + 名称/URL + 状态点 */}
-              <div className="flex items-start gap-2.5">
-                <SiteAvatar name={account.name} faviconUrl={account.faviconUrl} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <p
-                      className={cn(
-                        "truncate text-[13px] text-ink",
-                        account.disabled && "line-through",
-                      )}
-                    >
-                      {account.name}
-                    </p>
-                  </div>
-                  <p className="readout truncate text-[11px] text-ink-faint">{account.url}</p>
-                </div>
-                <StatusDot status={dotStatus(account)} />
-              </div>
-
-              {/* 徽章行：类型 + 过期 + 凭证 */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Badge tone="mute">{SITE_TYPE_LABELS[account.siteType]}</Badge>
-                {account.tokenState === "expired" && <Badge tone="amber">Token 过期</Badge>}
-                {account.credential && (
-                  <Badge tone="mute">
-                    {account.credential.kind === "password"
-                      ? "账密"
-                      : `OAuth·${OAUTH_PROVIDER_LABELS[account.credential.provider]}`}
-                  </Badge>
-                )}
-              </div>
-
-              {/* 分组 + 标签 */}
-              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-ink-mute">
-                <span className="text-ink-faint">{groupName(account.groupId)}</span>
-                {account.tagIds.map((id) => {
-                  const name = tagName(id);
-                  return name ? (
-                    <Badge key={id} tone="mute">
-                      {name}
-                    </Badge>
-                  ) : null;
-                })}
-              </div>
-
-              {/* 底部：余额 + 操作 */}
-              <div className="mt-auto flex items-end justify-between border-t border-line/60 pt-2.5">
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.12em] text-ink-faint">余额</p>
-                  <p className="readout text-[15px] text-ink">
-                    {account.balance ? formatUsd(account.balance.usd) : "—"}
-                  </p>
-                </div>
-                <div className="flex gap-1.5 opacity-70 transition group-hover:opacity-100 focus-within:opacity-100">
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      void browser.tabs.create({ url: account.url });
-                      toast("已打开站点——登录后点扩展弹窗的「识别」即可更新该账号");
-                    }}
-                    title="打开站点后用扩展弹窗识别，可刷新登录态"
+        <div className="space-y-2">
+          {sections.map((section) => {
+            const collapsed = section.group ? section.group.collapsed : ungroupedCollapsed;
+            return (
+              <section key={section.key}>
+                <button
+                  onClick={() => {
+                    if (section.group) void setGroupCollapsed(section.group.id, !collapsed);
+                    else setUngroupedCollapsed(!collapsed);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition hover:bg-raised/60"
+                  title={collapsed ? "展开分组" : "收起分组"}
+                >
+                  <span
+                    className={cn(
+                      "readout inline-block text-[10px] text-ink-faint transition-transform",
+                      !collapsed && "rotate-90",
+                    )}
                   >
-                    重新识别
-                  </Button>
-                  <Button size="sm" onClick={() => setEditing(toForm(account))}>
-                    编辑
-                  </Button>
-                  <Button size="sm" variant="danger" onClick={() => setDeleting(account)}>
-                    删除
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
+                    ▶
+                  </span>
+                  <span className="truncate text-[12px] font-medium text-ink-mute">
+                    {section.group?.name ?? "未分组"}
+                  </span>
+                  <span className="text-[11px] text-ink-faint">{section.accounts.length}</span>
+                  <span className="readout ml-auto text-[12px] text-ink-mute">
+                    {formatUsd(section.balance)}
+                  </span>
+                </button>
+                {!collapsed &&
+                  (section.accounts.length === 0 ? (
+                    <p className="px-2 pb-1.5 pt-0.5 text-[11px] text-ink-faint">组内暂无账号</p>
+                  ) : (
+                    <div className={cn(GRID_CLASS, "mt-1.5")}>
+                      {section.accounts.map(renderCard)}
+                    </div>
+                  ))}
+              </section>
+            );
+          })}
         </div>
       )}
 
