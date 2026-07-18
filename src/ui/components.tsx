@@ -213,6 +213,10 @@ export function SiteAvatar({
   size?: keyof typeof AVATAR_SIZES;
 }) {
   const [broken, setBroken] = useState(false);
+  // faviconUrl 变化（如重新识别到新图标）时复位失败态，重新尝试加载
+  useEffect(() => {
+    setBroken(false);
+  }, [faviconUrl]);
   const box = cn(
     "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md",
     AVATAR_SIZES[size],
