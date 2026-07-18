@@ -17,11 +17,16 @@ const NAV = [
 type NavKey = (typeof NAV)[number]["key"];
 
 export default function App() {
-  // 支持 options.html#security 之类的锚点直达（popup 表单引导设置主密码用）
+  // 支持 options.html#security 之类的锚点直达（popup 表单引导设置主密码用），
+  // 并让刷新停在当前选项卡——切换时把 key 写进 hash 持久化
   const [active, setActive] = useState<NavKey>(() => {
     const hash = location.hash.slice(1);
     return NAV.some((n) => n.key === hash) ? (hash as NavKey) : "accounts";
   });
+  const go = (key: NavKey) => {
+    setActive(key);
+    location.hash = key;
+  };
   const ActivePage = NAV.find((n) => n.key === active)!.page;
 
   return (
@@ -34,7 +39,7 @@ export default function App() {
           {NAV.map((item) => (
             <button
               key={item.key}
-              onClick={() => setActive(item.key)}
+              onClick={() => go(item.key)}
               className={cn(
                 "relative flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] transition",
                 active === item.key
