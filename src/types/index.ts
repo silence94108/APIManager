@@ -23,6 +23,9 @@ export const BALANCE_SITE_TYPES: SiteType[] = [
   "sub2api",
 ];
 
+/** 支持模型可用性测试的站点类型——new-api 系（/api/token 列表 + /v1/chat/completions 形状一致） */
+export const MODEL_TEST_SITE_TYPES: SiteType[] = ["new-api", "veloera", "anyrouter"];
+
 /** anyrouter 固定 cookie（复用浏览器登录态），其余默认 token */
 export type AuthType = "token" | "cookie";
 

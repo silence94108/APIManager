@@ -52,3 +52,30 @@ export const vaultMetaItem = storage.defineItem<VaultMeta | null>("local:vaultMe
 export const vaultKeyItem = storage.defineItem<string | null>("session:vaultKey", {
   fallback: null,
 });
+
+/** 模型测试的常用模型预设（用户可增删） */
+export const DEFAULT_TEST_MODELS = [
+  "claude-fable-5",
+  "claude-opus-4-8",
+  "claude-opus-4-7",
+  "claude-opus-4-6",
+  "claude-sonnet-4-6",
+  "claude-sonnet-5",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+  "gpt-5.5",
+  "gpt-5.4",
+];
+
+export interface ModelTestSettings {
+  /** 待测模型列表 */
+  models: string[];
+  /** 按 accountId 记忆的手填 API Key（自动拉取失败时用户补的） */
+  manualKeys: Record<string, string>;
+}
+
+export const modelTestSettingsItem = storage.defineItem<ModelTestSettings>(
+  "local:modelTestSettings",
+  { fallback: { models: DEFAULT_TEST_MODELS, manualKeys: {} } },
+);
