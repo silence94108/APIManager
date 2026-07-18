@@ -4,12 +4,14 @@ import AccountsPage from "./pages/AccountsPage";
 import CheckinPage from "./pages/CheckinPage";
 import GroupsTagsPage from "./pages/GroupsTagsPage";
 import ImportExportPage from "./pages/ImportExportPage";
+import ModelTestPage from "./pages/ModelTestPage";
 import SecurityPage from "./pages/SecurityPage";
 
 const NAV = [
   { key: "accounts", icon: "▦", label: "账号", page: AccountsPage },
   { key: "groups", icon: "▣", label: "分组与标签", page: GroupsTagsPage },
   { key: "checkin", icon: "◔", label: "自动签到", page: CheckinPage },
+  { key: "modeltest", icon: "◎", label: "模型测试", page: ModelTestPage },
   { key: "security", icon: "◈", label: "安全", page: SecurityPage },
   { key: "data", icon: "⇅", label: "数据", page: ImportExportPage },
 ] as const;
