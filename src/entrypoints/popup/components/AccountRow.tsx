@@ -103,7 +103,8 @@ export default function AccountRow({
             <RowAction title="编辑账号" onClick={() => onEdit(account)}>
               ✎
             </RowAction>
-            {eligible && (
+            {/* 不参与自动签到但配了自定义签到链接的账号（如仅记录型）也给手动入口 */}
+            {(eligible || !!account.checkinPageUrl?.trim()) && (
               <RowAction title="去签到页" onClick={() => window.open(resolveCheckinPageUrl(account))}>
                 ✋
               </RowAction>
