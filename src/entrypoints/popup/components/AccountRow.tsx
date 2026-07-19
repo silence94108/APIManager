@@ -105,9 +105,28 @@ export default function AccountRow({
         )}
       </div>
 
-      <span className="readout shrink-0 text-[13px] text-ink-mute group-hover:hidden">
-        {account.balance ? formatUsd(account.balance.usd) : "—"}
-      </span>
+      {/* 非 hover 态：失败/待验证时余额位让给快捷操作——问题账号不该藏在 hover 后面 */}
+      {status === "failed" && !busy ? (
+        <button
+          title={`签到失败${results[account.id]?.message ? `：${results[account.id].message}` : ""}，点击重试`}
+          onClick={checkin}
+          className="shrink-0 rounded border border-signal/40 px-1.5 py-px text-[11px] text-signal transition hover:bg-carbon group-hover:hidden"
+        >
+          ↯ 重试
+        </button>
+      ) : status === "verify" && !busy ? (
+        <button
+          title="需人机验证——去站点手动完成后再签"
+          onClick={() => window.open(account.url)}
+          className="shrink-0 rounded border border-amber/40 px-1.5 py-px text-[11px] text-amber transition hover:bg-carbon group-hover:hidden"
+        >
+          ⚠ 验证
+        </button>
+      ) : (
+        <span className="readout shrink-0 text-[13px] text-ink-mute group-hover:hidden">
+          {account.balance ? formatUsd(account.balance.usd) : "—"}
+        </span>
+      )}
     </div>
   );
 }

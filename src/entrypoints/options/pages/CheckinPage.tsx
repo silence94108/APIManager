@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { formatRunSummary } from "@/checkin/helpers";
 import { sendMessage } from "@/messaging/protocol";
 import {
@@ -9,7 +9,7 @@ import {
 } from "@/storage/items";
 import type { CheckinSettings, CheckinStatus } from "@/types";
 import { localDayString, parseHm } from "@/utils/day";
-import { Badge, Button, Field, Input, Spinner, toast, Toggle } from "@/ui/components";
+import { Badge, Button, cn, Field, Input, Spinner, toast, Toggle } from "@/ui/components";
 import { useStorageItem } from "@/ui/hooks";
 
 const STATUS_LABELS: Record<CheckinStatus, { text: string; tone: "phos" | "amber" | "signal" | "mute" }> = {
@@ -24,9 +24,18 @@ function fmtTime(ts?: number): string {
   return new Date(ts).toLocaleString("zh-CN", { hour12: false });
 }
 
+/** 记录行只显时分秒——列表本身已限定"今日"，日期是冗余 */
+function fmtClock(ts: number): string {
+  return new Date(ts).toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+type RecordFilter = "all" | "failed" | "needs_verification";
+
 export default function CheckinPage() {
   const [settings, setSettings] = useState<CheckinSettings | null>(null);
   const [running, setRunning] = useState(false);
+  const [filter, setFilter] = useState<RecordFilter>("all");
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const schedulerState = useStorageItem(schedulerStateItem);
   const results = useStorageItem(checkinResultsItem);
   const accounts = useStorageItem(accountsItem);
@@ -68,10 +77,31 @@ export default function CheckinPage() {
     }
   }
 
+  async function retryOne(accountId: string, name: string) {
+    setRetryingId(accountId);
+    try {
+      const res = await sendMessage("runCheckin", { accountIds: [accountId] });
+      if (!res.ok) {
+        toast(res.error, "err");
+        return;
+      }
+      // 结果以存储里本账号的今日记录为准（与 popup 单签同一契约），列表经 useStorageItem 自动刷新
+      const record = (await checkinResultsItem.getValue())[accountId];
+      if (record?.date === today && record.status === "success") toast(`${name} 重试成功`);
+      else toast(`${name} 重试后仍未成功${record?.message ? `：${record.message}` : ""}`, "err");
+    } finally {
+      setRetryingId(null);
+    }
+  }
+
   const today = localDayString();
   const todayRows = (accounts ?? [])
     .map((a) => ({ account: a, record: results?.[a.id] }))
-    .filter((r) => r.record?.date === today);
+    .filter((r) => r.record?.date === today)
+    .sort((a, b) => b.record!.at - a.record!.at);
+  const failedCount = todayRows.filter((r) => r.record!.status === "failed").length;
+  const verifyCount = todayRows.filter((r) => r.record!.status === "needs_verification").length;
+  const visibleRows = filter === "all" ? todayRows : todayRows.filter((r) => r.record!.status === filter);
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -149,28 +179,96 @@ export default function CheckinPage() {
       </section>
 
       <section className="rounded-lg border border-line bg-panel p-4">
-        <h2 className="readout mb-3 text-[14px] text-ink">今日签到记录 · {todayRows.length}</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="readout text-[14px] text-ink">今日签到记录 · {todayRows.length}</h2>
+          {todayRows.length > 0 && (
+            <div className="flex gap-1.5">
+              <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
+                全部
+              </FilterChip>
+              <FilterChip active={filter === "failed"} onClick={() => setFilter("failed")} tone="signal">
+                失败{failedCount > 0 ? ` ${failedCount}` : ""}
+              </FilterChip>
+              <FilterChip
+                active={filter === "needs_verification"}
+                onClick={() => setFilter("needs_verification")}
+                tone="amber"
+              >
+                待验证{verifyCount > 0 ? ` ${verifyCount}` : ""}
+              </FilterChip>
+            </div>
+          )}
+        </div>
         {todayRows.length === 0 ? (
           <p className="text-[13px] text-ink-faint">今天还没有签到记录</p>
+        ) : visibleRows.length === 0 ? (
+          <p className="text-[13px] text-ink-faint">
+            {filter === "failed" ? "没有失败记录 ✓" : "没有待验证记录 ✓"}
+          </p>
         ) : (
           <ul className="space-y-1.5">
-            {todayRows.map(({ account, record }) => (
+            {visibleRows.map(({ account, record }) => (
               <li
                 key={account.id}
                 className="flex items-center gap-3 rounded-md border border-line/60 px-3 py-1.5 text-[13px]"
               >
+                <span className="readout shrink-0 text-[11px] text-ink-faint">{fmtClock(record!.at)}</span>
                 <span className="flex-1 truncate">{account.name}</span>
                 <Badge tone={STATUS_LABELS[record!.status].tone}>
                   {STATUS_LABELS[record!.status].text}
                 </Badge>
-                <span className="max-w-[45%] truncate text-[11px] text-ink-faint" title={record!.message}>
+                <span className="max-w-[38%] truncate text-[11px] text-ink-faint" title={record!.message}>
                   {record!.message || ""}
                 </span>
+                {record!.status === "failed" && (
+                  <Button
+                    size="sm"
+                    disabled={retryingId !== null}
+                    onClick={() => void retryOne(account.id, account.name)}
+                  >
+                    {retryingId === account.id ? <Spinner /> : "↯ 重试"}
+                  </Button>
+                )}
+                {record!.status === "needs_verification" && (
+                  <Button size="sm" onClick={() => window.open(account.url)}>
+                    ↗ 去站点
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
         )}
       </section>
     </div>
+  );
+}
+
+function FilterChip({
+  active,
+  onClick,
+  tone,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  tone?: "signal" | "amber";
+  children: ReactNode;
+}) {
+  const activeTone =
+    tone === "signal"
+      ? "border-signal/50 text-signal"
+      : tone === "amber"
+        ? "border-amber/50 text-amber"
+        : "border-phos/50 text-phos";
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "rounded border px-2 py-0.5 text-[11px] transition",
+        active ? activeTone : "border-line text-ink-faint hover:text-ink",
+      )}
+    >
+      {children}
+    </button>
   );
 }
