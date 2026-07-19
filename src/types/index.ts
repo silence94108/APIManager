@@ -147,6 +147,8 @@ export interface CheckinSettings {
   /** "HH:mm"，mode=fixed 时的每日触发时刻；错过（浏览器未开）则打开后尽快补签 */
   fixedTime?: string;
   retryEnabled: boolean;
+  /** 遇 Turnstile 待验证时自动开临时窗口走站点前端流程；缺省视为开启 */
+  turnstileAssist?: boolean;
   notifyOnFinish: boolean;
 }
 

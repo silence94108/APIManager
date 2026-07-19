@@ -172,6 +172,11 @@ export default function CheckinPage() {
             label="失败后重试（30 分钟后，每账号每日最多 3 次尝试）"
           />
           <Toggle
+            checked={settings.turnstileAssist ?? true}
+            onChange={(v) => setSettings({ ...settings, turnstileAssist: v })}
+            label="遇人机验证自动开临时窗口尝试（隐形验证可全自动，交互式仍需手点）"
+          />
+          <Toggle
             checked={settings.notifyOnFinish}
             onChange={(v) => setSettings({ ...settings, notifyOnFinish: v })}
             label="完成后发系统通知"

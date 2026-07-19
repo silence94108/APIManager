@@ -16,6 +16,7 @@ export const DEFAULT_CHECKIN_SETTINGS: CheckinSettings = {
   windowEnd: "21:00",
   fixedTime: "09:00",
   retryEnabled: true,
+  turnstileAssist: true,
   notifyOnFinish: true,
 };
 

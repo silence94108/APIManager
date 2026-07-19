@@ -34,6 +34,14 @@ anyrouter 响应 `{code, ret, success, message}`：`success:false`=失败；mess
 - **累计已用**：new-api 系 `/api/user/self` 响应顺带 `data.used_quota`（quota 单位，÷500000）；sub2api `/api/v1/auth/me` 顺带 `data.quota_used`（已是美元）；voapi-v2 账号级无此字段（仅 token 级 `used`，未采用）
 - **今日消耗**（仅 new-api 系）：`GET /api/log/self/stat?p=1&page_size=10&token_name=&model_name=&start_timestamp=<本地0点秒>&end_timestamp=<本地23:59:59秒>&type=2` → `data.quota`（÷500000）；type=2 是消费日志（LogType.Consume）
 
+## Turnstile 辅助签到（页面事实）
+
+新版 new-api 在 `POST /api/user/checkin` 业务层要求 Turnstile token（"Turnstile token 为空"），只能由真实页面里的组件产出。原版方案：临时窗口加载签到页 → 点站点自己的签到按钮 → 站点前端带 token 完成请求 → 服务端复核。
+
+- **签到页路径**：new-api / veloera 默认主题 `/console/personal`（部分主题 `/profile`）；anyrouter `/console/topup`；voapi-v2 `/checkIn?_userMenuKey=checkIn`
+- **按钮定位**：候选 `button, a, [role="button"]`，文案匹配 `(签到|check\s*in|checkin)`（忽略大小写）、排除 `(已签到|already)`
+- **复核语义**：页面流程签成功后，后台重发签到 API 会返回"已签到"——以此确认辅助成功
+
 ## 通用请求头
 
 - `Content-Type: application/json`

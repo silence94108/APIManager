@@ -6,6 +6,7 @@ import { localDayString } from "@/utils/day";
 import { canCheckin, formatRunSummary, isCheckedToday } from "./helpers";
 import { getProvider } from "./providers";
 import { failedFromError } from "./providers/shared";
+import { assistTurnstileCheckin } from "./turnstileAssist";
 
 interface RunOptions {
   accountIds?: string[];
@@ -27,6 +28,7 @@ async function doRun({ accountIds, kind }: RunOptions): Promise<RunOutcome> {
   const all = await accountsItem.getValue();
   const targets = accountIds ? all.filter((a) => accountIds.includes(a.id)) : all;
   const today = localDayString();
+  const settings = await checkinSettingsItem.getValue();
   let results = await checkinResultsItem.getValue();
 
   const summary: RunSummary = { success: 0, already: 0, failed: 0, skipped: 0, needsVerify: 0 };
@@ -43,7 +45,11 @@ async function doRun({ accountIds, kind }: RunOptions): Promise<RunOutcome> {
       continue;
     }
 
-    const result = await checkInOne(account);
+    let result = await checkInOne(account);
+    if (result.status === "needs_verification" && (settings.turnstileAssist ?? true)) {
+      // 站点要 Turnstile token：开临时窗口走站点自己的前端流程，失败保留原待验证结果
+      result = (await assistTurnstileCheckin(account)) ?? result;
+    }
     // 逐账号落盘：service worker 中途被杀也能保住已完成账号的记录
     results = {
       ...results,
