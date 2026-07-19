@@ -18,21 +18,34 @@ function atMinutes(base: Date, minutes: number): number {
 }
 
 /**
- * 计算下一次每日签到的触发时刻（窗口内均匀随机）。纯函数，random 可注入。
- * 规则：今天已跑（lastDailyRunDay=今天）或窗口已过 → 排明天；
+ * 计算下一次每日签到的触发时刻。纯函数，random 可注入。
+ * window 模式（默认）：今天已跑（lastDailyRunDay=今天）或窗口已过 → 排明天；
  *       否则在 [max(now+60s, 窗口起点), 窗口终点] 内随机。
+ * fixed 模式：每天 fixedTime 触发；今天已跑 → 排明天；
+ *       错过今天时刻（浏览器当时没开）→ now+60s 尽快补签，不白丢一天。
  */
 export function computeDailyFireTime(
-  settings: Pick<CheckinSettings, "windowStart" | "windowEnd">,
+  settings: Pick<CheckinSettings, "mode" | "windowStart" | "windowEnd" | "fixedTime">,
   lastDailyRunDay: string | undefined,
   now: Date,
   random: () => number = Math.random,
 ): number {
+  const ranToday = lastDailyRunDay === localDayString(now);
+
+  if (settings.mode === "fixed") {
+    const fixedMin = parseHm(settings.fixedTime ?? "") ?? parseHm(FALLBACK_WINDOW.start)!;
+    if (ranToday) {
+      const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      return atMinutes(tomorrow, fixedMin);
+    }
+    const todayAt = atMinutes(now, fixedMin);
+    return todayAt >= now.getTime() + 60 * 1000 ? todayAt : now.getTime() + 60 * 1000;
+  }
+
   const startMin = parseHm(settings.windowStart) ?? parseHm(FALLBACK_WINDOW.start)!;
   const endMin = parseHm(settings.windowEnd) ?? parseHm(FALLBACK_WINDOW.end)!;
 
   let base = new Date(now);
-  const ranToday = lastDailyRunDay === localDayString(now);
   const todayWindowEnd = atMinutes(now, endMin);
   if (ranToday || now.getTime() >= todayWindowEnd) {
     base = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);

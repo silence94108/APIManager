@@ -48,11 +48,18 @@ export default function CheckinPage() {
 
   async function save() {
     if (!settings) return;
-    const start = parseHm(settings.windowStart);
-    const end = parseHm(settings.windowEnd);
-    if (start === null || end === null || start >= end) {
-      toast("时间窗口无效：要求 开始 < 结束（同一天内）", "err");
-      return;
+    if ((settings.mode ?? "window") === "fixed") {
+      if (parseHm(settings.fixedTime ?? "") === null) {
+        toast("固定时刻无效：请填写 HH:mm", "err");
+        return;
+      }
+    } else {
+      const start = parseHm(settings.windowStart);
+      const end = parseHm(settings.windowEnd);
+      if (start === null || end === null || start >= end) {
+        toast("时间窗口无效：要求 开始 < 结束（同一天内）", "err");
+        return;
+      }
     }
     await checkinSettingsItem.setValue(settings);
     const { nextDailyAt } = await sendMessage("reschedule", undefined);
@@ -111,24 +118,54 @@ export default function CheckinPage() {
           <Toggle
             checked={settings.autoEnabled}
             onChange={(v) => setSettings({ ...settings, autoEnabled: v })}
-            label="每日自动签到（在时间窗口内随机时刻执行）"
+            label="每日自动签到"
           />
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="窗口开始">
-              <Input
-                type="time"
-                value={settings.windowStart}
-                onChange={(e) => setSettings({ ...settings, windowStart: e.target.value })}
-              />
-            </Field>
-            <Field label="窗口结束">
-              <Input
-                type="time"
-                value={settings.windowEnd}
-                onChange={(e) => setSettings({ ...settings, windowEnd: e.target.value })}
-              />
-            </Field>
+          <div className="flex items-center gap-1.5">
+            <span className="mr-1 text-[12px] text-ink-faint">触发时刻</span>
+            <FilterChip
+              active={(settings.mode ?? "window") === "window"}
+              onClick={() => setSettings({ ...settings, mode: "window" })}
+            >
+              窗口内随机
+            </FilterChip>
+            <FilterChip
+              active={settings.mode === "fixed"}
+              onClick={() => setSettings({ ...settings, mode: "fixed" })}
+            >
+              每天定时
+            </FilterChip>
           </div>
+          {settings.mode === "fixed" ? (
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="每天于此时刻签到">
+                <Input
+                  type="time"
+                  value={settings.fixedTime ?? "09:00"}
+                  onChange={(e) => setSettings({ ...settings, fixedTime: e.target.value })}
+                />
+              </Field>
+              <p className="self-end pb-1.5 text-[11px] leading-snug text-ink-faint">
+                错过时刻（浏览器未开）会在打开后尽快补签
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="窗口开始">
+                <Input
+                  type="time"
+                  value={settings.windowStart}
+                  onChange={(e) => setSettings({ ...settings, windowStart: e.target.value })}
+                />
+              </Field>
+              <Field label="窗口结束">
+                <Input
+                  type="time"
+                  value={settings.windowEnd}
+                  onChange={(e) => setSettings({ ...settings, windowEnd: e.target.value })}
+                />
+              </Field>
+            </div>
+          )}
           <Toggle
             checked={settings.retryEnabled}
             onChange={(v) => setSettings({ ...settings, retryEnabled: v })}

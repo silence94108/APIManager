@@ -11,8 +11,10 @@ import type {
 
 export const DEFAULT_CHECKIN_SETTINGS: CheckinSettings = {
   autoEnabled: true,
+  mode: "window",
   windowStart: "09:00",
   windowEnd: "21:00",
+  fixedTime: "09:00",
   retryEnabled: true,
   notifyOnFinish: true,
 };

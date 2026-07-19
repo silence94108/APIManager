@@ -137,9 +137,13 @@ export interface RunOutcome {
 
 export interface CheckinSettings {
   autoEnabled: boolean;
+  /** 触发模式：window=窗口内随机时刻（默认，缺省视为 window），fixed=每天固定时刻 */
+  mode?: "window" | "fixed";
   /** "HH:mm"，要求 windowStart < windowEnd（同日窗口） */
   windowStart: string;
   windowEnd: string;
+  /** "HH:mm"，mode=fixed 时的每日触发时刻；错过（浏览器未开）则打开后尽快补签 */
+  fixedTime?: string;
   retryEnabled: boolean;
   notifyOnFinish: boolean;
 }

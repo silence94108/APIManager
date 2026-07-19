@@ -63,3 +63,38 @@ describe("computeDailyFireTime", () => {
     expect(when).toBeLessThanOrEqual(new Date(2026, 6, 15, 21, 0).getTime());
   });
 });
+
+describe("computeDailyFireTime · fixed 模式", () => {
+  const FIXED = { ...WINDOW, mode: "fixed" as const, fixedTime: "10:30" };
+
+  it("时刻未到：排今天该时刻整点", () => {
+    const now = new Date(2026, 6, 15, 8, 0);
+    expect(computeDailyFireTime(FIXED, undefined, now)).toBe(
+      new Date(2026, 6, 15, 10, 30).getTime(),
+    );
+  });
+
+  it("已错过今天时刻且未跑：now+60s 尽快补签，而非顺延明天", () => {
+    const now = new Date(2026, 6, 15, 14, 0);
+    expect(computeDailyFireTime(FIXED, undefined, now)).toBe(now.getTime() + 60 * 1000);
+  });
+
+  it("今天已跑：排明天该时刻", () => {
+    const now = new Date(2026, 6, 15, 8, 0);
+    expect(computeDailyFireTime(FIXED, "2026-07-15", now)).toBe(
+      new Date(2026, 6, 16, 10, 30).getTime(),
+    );
+  });
+
+  it("now 恰在时刻前 30s：不足 60s 缓冲，落到 now+60s", () => {
+    const now = new Date(2026, 6, 15, 10, 29, 30);
+    expect(computeDailyFireTime(FIXED, undefined, now)).toBe(now.getTime() + 60 * 1000);
+  });
+
+  it("fixedTime 非法时回退 09:00", () => {
+    const now = new Date(2026, 6, 15, 7, 0);
+    expect(
+      computeDailyFireTime({ ...WINDOW, mode: "fixed", fixedTime: "bad" }, undefined, now),
+    ).toBe(new Date(2026, 6, 15, 9, 0).getTime());
+  });
+});
