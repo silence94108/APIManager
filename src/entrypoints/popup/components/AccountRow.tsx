@@ -10,10 +10,12 @@ export default function AccountRow({
   account,
   results,
   today,
+  onEdit,
 }: {
   account: Account;
   results: CheckinResults;
   today: string;
+  onEdit: (account: Account) => void;
 }) {
   const [busy, setBusy] = useState<"checkin" | "refresh" | null>(null);
   const [pulse, setPulse] = useState(false);
@@ -98,6 +100,9 @@ export default function AccountRow({
                 ↻
               </RowAction>
             )}
+            <RowAction title="编辑账号" onClick={() => onEdit(account)}>
+              ✎
+            </RowAction>
             <RowAction title="打开站点" onClick={() => window.open(account.url)}>
               ↗
             </RowAction>

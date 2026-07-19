@@ -13,7 +13,7 @@ import { setGroupCollapsed } from "@/storage/groupsTags";
 import type { Account, Group } from "@/types";
 import { localDayString } from "@/utils/day";
 import { formatUsd, sumBalanceUsd } from "@/utils/quota";
-import { AccountFormDialog, fromDetected, mergeDetectedIntoAccount, type FormState } from "@/ui/AccountFormDialog";
+import { AccountFormDialog, fromDetected, mergeDetectedIntoAccount, toForm, type FormState } from "@/ui/AccountFormDialog";
 import { Button, cn, EmptyState, Spinner, ToastHost, toast } from "@/ui/components";
 import { useStorageItem } from "@/ui/hooks";
 import AccountRow from "./components/AccountRow";
@@ -40,7 +40,7 @@ export default function App() {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [ungroupedCollapsed, setUngroupedCollapsed] = useState(false);
   const [busyAll, setBusyAll] = useState<"checkin" | "refresh" | "detect" | null>(null);
-  const [detected, setDetected] = useState<FormState | null>(null);
+  const [formState, setFormState] = useState<FormState | null>(null); // 识别与编辑共用同一个表单弹窗
 
   const today = localDayString();
 
@@ -119,10 +119,10 @@ export default function App() {
       );
       if (dup) {
         toast(`「${dup.name}」已存在，已载入最新登录态待确认更新`);
-        setDetected(mergeDetectedIntoAccount(dup, result.account));
+        setFormState(mergeDetectedIntoAccount(dup, result.account));
       } else {
         // 直接在 popup 内弹预填表单，不再跳设置页
-        setDetected(fromDetected(result.account));
+        setFormState(fromDetected(result.account));
       }
     } finally {
       setBusyAll(null);
@@ -136,7 +136,7 @@ export default function App() {
       className={cn(
         "flex max-h-[580px] w-[380px] flex-col",
         // 弹窗打开时撑高视口，否则账号少时 popup 太矮、表单被压扁
-        detected && "min-h-[560px]",
+        formState && "min-h-[560px]",
       )}
     >
       <header className="relative border-b border-line px-4 pb-3 pt-4">
@@ -231,7 +231,13 @@ export default function App() {
               style={{ animationDelay: `${i * 30}ms` }}
             >
               {section.accounts.map((account) => (
-                <AccountRow key={account.id} account={account} results={results ?? {}} today={today} />
+                <AccountRow
+                  key={account.id}
+                  account={account}
+                  results={results ?? {}}
+                  today={today}
+                  onEdit={(a) => setFormState(toForm(a))}
+                />
               ))}
             </GroupSection>
           ))
@@ -249,12 +255,12 @@ export default function App() {
         </span>
       </footer>
 
-      {detected && (
+      {formState && (
         <AccountFormDialog
-          initial={detected}
+          initial={formState}
           groups={groups}
           tags={tags}
-          onClose={() => setDetected(null)}
+          onClose={() => setFormState(null)}
         />
       )}
 
