@@ -134,6 +134,13 @@ export default function AccountsPage() {
             <p className="readout text-[15px] text-ink">
               {account.balance ? formatUsd(account.balance.usd) : "—"}
             </p>
+            {account.usage && (account.usage.todayUsd !== undefined || account.usage.totalUsd !== undefined) && (
+              <p className="readout mt-0.5 text-[10px] text-ink-faint">
+                {account.usage.todayUsd !== undefined && `今日 ${formatUsd(account.usage.todayUsd)}`}
+                {account.usage.todayUsd !== undefined && account.usage.totalUsd !== undefined && " · "}
+                {account.usage.totalUsd !== undefined && `累计 ${formatUsd(account.usage.totalUsd)}`}
+              </p>
+            )}
           </div>
           <div className="flex gap-1.5 opacity-70 transition group-hover:opacity-100 focus-within:opacity-100">
             <Button

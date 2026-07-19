@@ -84,6 +84,8 @@ export interface Account {
   /** voapi-v2 JWT 过期标记；expired 的账号签到时跳过 */
   tokenState?: "ok" | "expired";
   balance?: { usd: number; updatedAt: number };
+  /** 使用金额统计（USD）：totalUsd=累计已用（new-api 系 used_quota / sub2api quota_used），todayUsd=今日消耗（仅 new-api 系 stat 接口）；站点不支持的口径为 undefined */
+  usage?: { totalUsd?: number; todayUsd?: number; updatedAt: number };
   createdAt: number;
   updatedAt: number;
 }

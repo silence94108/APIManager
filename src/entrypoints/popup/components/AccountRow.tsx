@@ -123,8 +123,20 @@ export default function AccountRow({
           ⚠ 验证
         </button>
       ) : (
-        <span className="readout shrink-0 text-[13px] text-ink-mute group-hover:hidden">
-          {account.balance ? formatUsd(account.balance.usd) : "—"}
+        <span className="flex shrink-0 flex-col items-end group-hover:hidden">
+          <span className="readout text-[13px] text-ink-mute">
+            {account.balance ? formatUsd(account.balance.usd) : "—"}
+          </span>
+          {/* 行高有限只显一个口径：今日消耗优先（更常看），站点拿不到今日再退累计 */}
+          {account.usage?.todayUsd !== undefined ? (
+            <span className="readout text-[9px] leading-tight text-ink-faint">
+              今日 {formatUsd(account.usage.todayUsd)}
+            </span>
+          ) : account.usage?.totalUsd !== undefined ? (
+            <span className="readout text-[9px] leading-tight text-ink-faint">
+              累计 {formatUsd(account.usage.totalUsd)}
+            </span>
+          ) : null}
         </span>
       )}
     </div>
