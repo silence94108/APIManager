@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { canCheckin } from "@/checkin/helpers";
+import { canCheckin, resolveCheckinPageUrl } from "@/checkin/helpers";
 import { sendMessage } from "@/messaging/protocol";
 import { checkinResultsItem } from "@/storage/items";
 import { BALANCE_SITE_TYPES, type Account, type CheckinResults } from "@/types";
@@ -46,9 +46,9 @@ export default function AccountRow({
       } else if (record.status === "already_checked") {
         toast(`${account.name} 今天已经签过啦`);
       } else if (record.status === "needs_verification") {
-        // 人机验证只能真人在站点完成——直接打开站点，把"勾一下"交还用户
-        toast(`${account.name} 需完成人机验证，已为你打开站点`, "err");
-        window.open(account.url);
+        // 人机验证只能真人在站点完成——直接打开签到页，把"勾一下"交还用户
+        toast(`${account.name} 需完成人机验证，已为你打开签到页`, "err");
+        window.open(resolveCheckinPageUrl(account));
       } else {
         toast(`${account.name} 签到失败${record.message ? `：${record.message}` : ""}`, "err");
       }
@@ -103,6 +103,11 @@ export default function AccountRow({
             <RowAction title="编辑账号" onClick={() => onEdit(account)}>
               ✎
             </RowAction>
+            {eligible && (
+              <RowAction title="去签到页" onClick={() => window.open(resolveCheckinPageUrl(account))}>
+                ✋
+              </RowAction>
+            )}
             <RowAction title="打开站点" onClick={() => window.open(account.url)}>
               ↗
             </RowAction>
@@ -121,8 +126,8 @@ export default function AccountRow({
         </button>
       ) : status === "verify" && !busy ? (
         <button
-          title="需人机验证——去站点手动完成后再签"
-          onClick={() => window.open(account.url)}
+          title="需人机验证——去签到页手动完成后再签"
+          onClick={() => window.open(resolveCheckinPageUrl(account))}
           className="shrink-0 rounded border border-amber/40 px-1.5 py-px text-[11px] text-amber transition hover:bg-carbon group-hover:hidden"
         >
           ⚠ 验证

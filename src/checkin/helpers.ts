@@ -1,4 +1,39 @@
-import { CHECKIN_SITE_TYPES, type Account, type AccountCheckinRecord, type RunSummary } from "@/types";
+import {
+  CHECKIN_SITE_TYPES,
+  type Account,
+  type AccountCheckinRecord,
+  type RunSummary,
+  type SiteType,
+} from "@/types";
+
+/** 各站点类型默认签到页路径（事实来自 all-api-hub 站点定义，docs/reference-all-api-hub.md） */
+export const CHECKIN_PAGE_PATHS: Partial<Record<SiteType, string>> = {
+  "new-api": "/console/personal",
+  veloera: "/console/personal",
+  anyrouter: "/console/topup",
+  "voapi-v2": "/checkIn?_userMenuKey=checkIn",
+};
+
+/** 签到页地址：账号自定义（完整 URL 或 / 路径）优先，其次类型默认路径，兜底站点首页 */
+export function resolveCheckinPageUrl(
+  account: Pick<Account, "url" | "siteType" | "checkinPageUrl">,
+): string {
+  const custom = account.checkinPageUrl?.trim();
+  if (custom) {
+    try {
+      return new URL(custom, account.url).toString();
+    } catch {
+      // 非法自定义值退默认路径
+    }
+  }
+  const path = CHECKIN_PAGE_PATHS[account.siteType];
+  if (!path) return account.url;
+  try {
+    return new URL(path, account.url).toString();
+  } catch {
+    return account.url;
+  }
+}
 
 /** 账号是否有资格参与签到——runner 的 skip 判定与 UI 的按钮显隐共用同一真源 */
 export function canCheckin(account: Account): boolean {

@@ -83,6 +83,8 @@ export interface Account {
   checkinEnabled: boolean;
   /** voapi-v2 JWT 过期标记；expired 的账号签到时跳过 */
   tokenState?: "ok" | "expired";
+  /** 自定义签到页链接（完整 URL 或以 / 开头的路径）——留空用站点类型默认路径 */
+  checkinPageUrl?: string;
   balance?: { usd: number; updatedAt: number };
   /** 使用金额统计（USD）：totalUsd=累计已用（new-api 系 used_quota / sub2api quota_used），todayUsd=今日消耗（仅 new-api 系 stat 接口）；站点不支持的口径为 undefined */
   usage?: { totalUsd?: number; todayUsd?: number; updatedAt: number };

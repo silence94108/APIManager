@@ -1,4 +1,5 @@
-import type { Account, ProviderResult, SiteType } from "@/types";
+import type { Account, ProviderResult } from "@/types";
+import { CHECKIN_PAGE_PATHS, resolveCheckinPageUrl } from "./helpers";
 import { getProvider } from "./providers";
 
 /**
@@ -9,14 +10,6 @@ import { getProvider } from "./providers";
  * 隐形/托管模式的 Turnstile 无需用户交互即可全自动；交互式验证窗口会留给用户点。
  * 任何一步失败都返回 null，调用方保持原 needs_verification 结果不变。
  */
-
-/** 各站点签到页路径（事实来自 all-api-hub 站点定义，docs/reference-all-api-hub.md） */
-const CHECKIN_PAGE_PATHS: Partial<Record<SiteType, string>> = {
-  "new-api": "/console/personal",
-  veloera: "/console/personal",
-  anyrouter: "/console/topup",
-  "voapi-v2": "/checkIn?_userMenuKey=checkIn",
-};
 
 const PAGE_LOAD_TIMEOUT_MS = 20_000;
 /** SPA 首屏渲染等待 */
@@ -64,13 +57,13 @@ function waitForTabComplete(tabId: number): Promise<void> {
 
 /** 尝试辅助签到。成功返回 success 结果；失败/不支持返回 null（调用方保留原结果） */
 export async function assistTurnstileCheckin(account: Account): Promise<ProviderResult | null> {
-  const path = CHECKIN_PAGE_PATHS[account.siteType];
-  if (!path) return null;
+  // 无默认签到页且未自定义链接的类型不知道该开哪个页面
+  if (!CHECKIN_PAGE_PATHS[account.siteType] && !account.checkinPageUrl?.trim()) return null;
 
   let winId: number | undefined;
   try {
     const win = await browser.windows.create({
-      url: new URL(path, account.url).toString(),
+      url: resolveCheckinPageUrl(account),
       type: "popup",
       width: 460,
       height: 680,

@@ -3,6 +3,7 @@ import { saveAccount, type AccountDraft } from "@/storage/accounts";
 import { vaultMetaItem } from "@/storage/items";
 import { sendMessage } from "@/messaging/protocol";
 import type { DetectedAccount } from "@/detect/types";
+import { CHECKIN_PAGE_PATHS } from "@/checkin/helpers";
 import {
   OAUTH_PROVIDER_LABELS,
   OAUTH_PROVIDERS,
@@ -33,6 +34,8 @@ export interface FormState {
   groupId: string;
   tagIds: string[];
   notes: string;
+  /** 自定义签到页链接——留空用站点类型默认路径 */
+  checkinPageUrl: string;
   disabled: boolean;
   checkinEnabled: boolean;
   credKind: CredKind;
@@ -57,6 +60,7 @@ export const EMPTY_FORM: FormState = {
   groupId: "",
   tagIds: [],
   notes: "",
+  checkinPageUrl: "",
   disabled: false,
   checkinEnabled: true,
   credKind: "none",
@@ -79,6 +83,7 @@ export function toForm(account: Account): FormState {
     groupId: account.groupId ?? "",
     tagIds: account.tagIds,
     notes: account.notes ?? "",
+    checkinPageUrl: account.checkinPageUrl ?? "",
     disabled: account.disabled,
     checkinEnabled: account.checkinEnabled,
     credKind: cred?.kind ?? "none",
@@ -240,6 +245,7 @@ export function AccountFormDialog({
       groupId: form.groupId || null,
       tagIds: form.tagIds,
       notes: form.notes.trim() || undefined,
+      checkinPageUrl: form.checkinPageUrl.trim() || undefined,
       disabled: form.disabled,
       checkinEnabled: form.checkinEnabled,
       // 编辑时重新提交 token 视为已更新，清除过期标记
@@ -474,6 +480,19 @@ export function AccountFormDialog({
         <div className="sm:col-span-2">
           <Field label="备注">
             <Input value={form.notes} onChange={(e) => set({ notes: e.target.value })} />
+          </Field>
+        </div>
+
+        <div className="sm:col-span-2">
+          <Field
+            label="签到页链接（选填）"
+            hint={`站点签到页不是默认路径时填这里——完整 URL 或 / 开头路径均可；留空用默认 ${CHECKIN_PAGE_PATHS[form.siteType] ?? "站点首页"}`}
+          >
+            <Input
+              value={form.checkinPageUrl}
+              onChange={(e) => set({ checkinPageUrl: e.target.value })}
+              placeholder={CHECKIN_PAGE_PATHS[form.siteType] ?? "/checkin"}
+            />
           </Field>
         </div>
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { formatRunSummary } from "@/checkin/helpers";
+import { formatRunSummary, resolveCheckinPageUrl } from "@/checkin/helpers";
 import { sendMessage } from "@/messaging/protocol";
 import {
   accountsItem,
@@ -263,17 +263,26 @@ export default function CheckinPage() {
                   {record!.message || ""}
                 </span>
                 {record!.status === "failed" && (
-                  <Button
-                    size="sm"
-                    disabled={retryingId !== null}
-                    onClick={() => void retryOne(account.id, account.name)}
-                  >
-                    {retryingId === account.id ? <Spinner /> : "↯ 重试"}
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      disabled={retryingId !== null}
+                      onClick={() => void retryOne(account.id, account.name)}
+                    >
+                      {retryingId === account.id ? <Spinner /> : "↯ 重试"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => window.open(resolveCheckinPageUrl(account))}
+                      title="打开站点签到页手动签"
+                    >
+                      ✋ 手动签到
+                    </Button>
+                  </>
                 )}
                 {record!.status === "needs_verification" && (
-                  <Button size="sm" onClick={() => window.open(account.url)}>
-                    ↗ 去站点
+                  <Button size="sm" onClick={() => window.open(resolveCheckinPageUrl(account))}>
+                    ↗ 去签到页
                   </Button>
                 )}
               </li>
