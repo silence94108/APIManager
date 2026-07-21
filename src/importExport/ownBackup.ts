@@ -46,6 +46,8 @@ export interface OwnImportReport {
   tags: number;
   /** 因主密码体系不同而丢弃的密码凭证数（账号本身仍导入） */
   droppedPasswords: number;
+  /** 因主密码体系不同而丢弃的 API 密钥条数（账号本身仍导入） */
+  droppedApiKeys: number;
 }
 
 /** 采纳备份的 vault 元数据；库换了则旧解锁密钥作废 */
@@ -81,7 +83,13 @@ export async function importOwnBackup(
       ...(backup.checkinSettings ? [checkinSettingsItem.setValue(backup.checkinSettings)] : []),
     ]);
     if (backup.vault !== undefined) await adoptVault(backup.vault);
-    return { accounts: accounts.length, groups: groups.length, tags: tags.length, droppedPasswords: 0 };
+    return {
+      accounts: accounts.length,
+      groups: groups.length,
+      tags: tags.length,
+      droppedPasswords: 0,
+      droppedApiKeys: 0,
+    };
   }
 
   const [curAccounts, curGroups, curTags, curVault] = await Promise.all([
@@ -93,14 +101,18 @@ export async function importOwnBackup(
 
   const incomingVault = backup.vault ?? null;
   let droppedPasswords = 0;
+  let droppedApiKeys = 0;
   let mergeAccounts = accounts;
   if (!curVault && incomingVault) {
     await adoptVault(incomingVault);
   } else if (curVault && incomingVault && curVault.salt !== incomingVault.salt) {
     mergeAccounts = accounts.map((a) => {
-      if (a.credential?.kind !== "password") return a;
-      droppedPasswords++;
-      return { ...a, credential: undefined };
+      const hasPassword = a.credential?.kind === "password";
+      const keyCount = a.apiKeys?.length ?? 0;
+      if (!hasPassword && !keyCount) return a;
+      if (hasPassword) droppedPasswords++;
+      droppedApiKeys += keyCount;
+      return { ...a, credential: hasPassword ? undefined : a.credential, apiKeys: undefined };
     });
   }
 
@@ -130,5 +142,6 @@ export async function importOwnBackup(
     groups: newGroups.length,
     tags: newTags.length,
     droppedPasswords,
+    droppedApiKeys,
   };
 }

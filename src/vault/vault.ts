@@ -1,5 +1,5 @@
 import { accountsItem, vaultKeyItem, vaultMetaItem } from "@/storage/items";
-import type { EncryptedBlob } from "@/types";
+import type { ApiKeyEntry, EncryptedBlob } from "@/types";
 import {
   decryptString,
   deriveAesKey,
@@ -75,7 +75,7 @@ export async function decryptSecret(blob: EncryptedBlob): Promise<string> {
   return decryptString(key, blob);
 }
 
-/** 校验旧密码 → 新盐派生新钥 → 全部账密凭证重加密；解不开的脏密文（异库合并残留）直接丢弃 */
+/** 校验旧密码 → 新盐派生新钥 → 全部账密凭证与 API 密钥重加密；解不开的脏密文（异库合并残留）直接丢弃 */
 export async function changeVaultPassword(
   oldPassword: string,
   newPassword: string,
@@ -94,16 +94,31 @@ export async function changeVaultPassword(
   const accounts = await accountsItem.getValue();
   const reEncrypted = await Promise.all(
     accounts.map(async (a) => {
-      if (a.credential?.kind !== "password") return a;
-      try {
-        const plain = await decryptString(oldKey, a.credential.passwordEnc);
-        return {
-          ...a,
-          credential: { ...a.credential, passwordEnc: await encryptString(newKey, plain) },
-        };
-      } catch {
-        return { ...a, credential: undefined };
+      let next = a;
+      if (a.credential?.kind === "password") {
+        try {
+          const plain = await decryptString(oldKey, a.credential.passwordEnc);
+          next = {
+            ...next,
+            credential: { ...a.credential, passwordEnc: await encryptString(newKey, plain) },
+          };
+        } catch {
+          next = { ...next, credential: undefined };
+        }
       }
+      if (a.apiKeys?.length) {
+        const kept: ApiKeyEntry[] = [];
+        for (const k of a.apiKeys) {
+          try {
+            const plain = await decryptString(oldKey, k.keyEnc);
+            kept.push({ ...k, keyEnc: await encryptString(newKey, plain) });
+          } catch {
+            // 脏密文条目丢弃
+          }
+        }
+        next = { ...next, apiKeys: kept.length ? kept : undefined };
+      }
+      return next;
     }),
   );
   await accountsItem.setValue(reEncrypted);
@@ -116,18 +131,25 @@ export async function changeVaultPassword(
   return true;
 }
 
-/** 忘记主密码的兜底：清空 vault 并删除所有账密凭证（OAuth 记录保留），返回删除数 */
-export async function resetVault(): Promise<number> {
+/** 忘记主密码的兜底：清空 vault 并删除所有账密凭证与 API 密钥（OAuth 记录保留），返回删除数 */
+export async function resetVault(): Promise<{ passwords: number; apiKeys: number }> {
   const accounts = await accountsItem.getValue();
-  const stripped = accounts.filter((a) => a.credential?.kind === "password").length;
-  if (stripped) {
+  const passwords = accounts.filter((a) => a.credential?.kind === "password").length;
+  const apiKeys = accounts.reduce((n, a) => n + (a.apiKeys?.length ?? 0), 0);
+  if (passwords || apiKeys) {
     await accountsItem.setValue(
       accounts.map((a) =>
-        a.credential?.kind === "password" ? { ...a, credential: undefined } : a,
+        a.credential?.kind === "password" || a.apiKeys?.length
+          ? {
+              ...a,
+              credential: a.credential?.kind === "password" ? undefined : a.credential,
+              apiKeys: undefined,
+            }
+          : a,
       ),
     );
   }
   await vaultMetaItem.setValue(null);
   await vaultKeyItem.setValue(null);
-  return stripped;
+  return { passwords, apiKeys };
 }

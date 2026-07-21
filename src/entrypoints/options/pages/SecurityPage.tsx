@@ -19,13 +19,14 @@ export default function SecurityPage() {
 
   if (meta === undefined) return null;
   const passwordCount = (accounts ?? []).filter((a) => a.credential?.kind === "password").length;
+  const apiKeyCount = (accounts ?? []).reduce((n, a) => n + (a.apiKeys?.length ?? 0), 0);
 
   return (
     <div className="max-w-2xl space-y-6">
       <div>
         <h1 className="readout mb-1 text-[15px] text-ink">安全</h1>
         <p className="text-[12px] text-ink-faint">
-          账号密码以主密码派生密钥（PBKDF2 + AES-GCM）加密后存本地；主密码与密钥不落盘，浏览器关闭后自动上锁。
+          账号密码与 API 密钥以主密码派生密钥（PBKDF2 + AES-GCM）加密后存本地；主密码与密钥不落盘，浏览器关闭后自动上锁。
         </p>
       </div>
 
@@ -35,7 +36,7 @@ export default function SecurityPage() {
         <>
           <StatusCard unlocked={!!sessionKey} />
           <ChangePasswordCard />
-          <ResetCard passwordCount={passwordCount} />
+          <ResetCard passwordCount={passwordCount} apiKeyCount={apiKeyCount} />
         </>
       )}
     </div>
@@ -196,7 +197,7 @@ function ChangePasswordCard() {
     setNewPw("");
     setConfirm("");
     setError("");
-    toast("主密码已修改，所有已存密码已重新加密");
+    toast("主密码已修改，所有已存密码与 API 密钥已重新加密");
   }
 
   return (
@@ -253,14 +254,14 @@ function ChangePasswordCard() {
   );
 }
 
-function ResetCard({ passwordCount }: { passwordCount: number }) {
+function ResetCard({ passwordCount, apiKeyCount }: { passwordCount: number; apiKeyCount: number }) {
   const [confirming, setConfirming] = useState(false);
 
   return (
     <section className="rounded-lg border border-signal/30 bg-panel p-4">
       <h2 className="readout mb-1 text-[14px] text-signal">重置保险库</h2>
       <p className="mb-3 text-[12px] text-ink-faint">
-        忘记主密码时的兜底：清除主密码并删除所有已保存的账号密码（OAuth 记录与 Token 不受影响）。
+        忘记主密码时的兜底：清除主密码并删除所有已保存的账号密码与 API 密钥（OAuth 记录与 Token 不受影响）。
       </p>
       <Button variant="danger" onClick={() => setConfirming(true)}>
         重置保险库
@@ -271,8 +272,8 @@ function ResetCard({ passwordCount }: { passwordCount: number }) {
         title="重置保险库"
         message={
           <>
-            将清除主密码并删除{" "}
-            <span className="text-signal">{passwordCount}</span> 个账号的已存密码，该操作不可恢复。确定重置？
+            将清除主密码并删除 <span className="text-signal">{passwordCount}</span> 个账号的已存密码、
+            <span className="text-signal">{apiKeyCount}</span> 条 API 密钥，该操作不可恢复。确定重置？
           </>
         }
         confirmText="重置"
@@ -280,7 +281,7 @@ function ResetCard({ passwordCount }: { passwordCount: number }) {
         onConfirm={async () => {
           const stripped = await resetVault();
           setConfirming(false);
-          toast(`保险库已重置，删除了 ${stripped} 个已存密码`);
+          toast(`保险库已重置，删除了 ${stripped.passwords} 个已存密码、${stripped.apiKeys} 条 API 密钥`);
         }}
       />
     </section>

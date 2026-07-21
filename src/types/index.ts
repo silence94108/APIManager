@@ -49,6 +49,15 @@ export type Credential =
   | { kind: "password"; username: string; passwordEnc: EncryptedBlob }
   | { kind: "oauth"; provider: OAuthProvider; identity?: string };
 
+/** 站点 API 令牌（sk-）——vault 加密，仅人工取用（复制/模型测试），不进后台自动链路 */
+export interface ApiKeyEntry {
+  id: string;
+  /** 备注名，如「Cherry Studio」；可空串 */
+  name: string;
+  keyEnc: EncryptedBlob;
+  createdAt: number;
+}
+
 /** vault 元数据——密钥永不落盘，只存盐和用于验证主密码的校验密文 */
 export interface VaultMeta {
   salt: string;
@@ -74,6 +83,8 @@ export interface Account {
   faviconUrl?: string;
   /** 站点登录凭证（账密 / OAuth 授权记录）；有凭证时 token 与用户 ID 可缺省（仅记录，不参与余额签到） */
   credential?: Credential;
+  /** 站点 API 令牌列表——首条视为主用；vault 加密，重置/异库合并时整体剥离 */
+  apiKeys?: ApiKeyEntry[];
   groupId: string | null;
   tagIds: string[];
   notes?: string;
