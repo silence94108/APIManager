@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, FlaskConical, X } from "lucide-react";
+import { Check, ChevronRight, FlaskConical, X } from "lucide-react";
 import {
   fetchFirstApiKey,
   fetchSiteModels,
@@ -11,7 +11,7 @@ import {
   type ModelTestOutcome,
   type PacingKey,
 } from "@/api/modelTest";
-import { accountsItem, DEFAULT_TEST_MODELS, modelTestSettingsItem } from "@/storage/items";
+import { accountsItem, DEFAULT_TEST_MODELS, groupsItem, modelTestSettingsItem } from "@/storage/items";
 import { MODEL_TEST_SITE_TYPES, SITE_TYPE_LABELS, type Account } from "@/types";
 import { decryptSecret, isVaultUnlocked } from "@/vault/vault";
 import { Badge, Button, cn, EmptyState, Input, Select, SiteAvatar, Spinner, toast } from "@/ui/components";
@@ -29,15 +29,19 @@ const cellKey = (accountId: string, model: string) => `${accountId}::${model}`;
 
 export default function ModelTestPage() {
   const accounts = useStorageItem(accountsItem);
+  const groups = useStorageItem(groupsItem);
   const settings = useStorageItem(modelTestSettingsItem);
 
-  const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
+  /** 选中待测的账号 id——默认空选，用户手动勾 */
+  const [selected, setSelected] = useState<string[]>([]);
   const [results, setResults] = useState<ResultMap>({});
   const [running, setRunning] = useState(false);
   const [newModel, setNewModel] = useState("");
   const [manualKeyEdit, setManualKeyEdit] = useState<Record<string, string>>({});
   /** 折叠的厂商组（vendor → true 为收起） */
   const [collapsedVendors, setCollapsedVendors] = useState<Record<string, boolean>>({});
+  /** 折叠的账号分组（组 id / "__ungrouped" → true 为收起）——仅本页会话内记忆，不动 popup 的折叠态 */
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   /** 拉取令牌进行中 */
   const [pullingKeys, setPullingKeys] = useState(false);
   /** key 明文可见（accountId → true 为明文） */
@@ -66,6 +70,19 @@ export default function ModelTestPage() {
     return groupByVendor([...defaults, ...rest]);
   }, [settings?.models]);
 
+  // 与账号页同一契约：分组按 sortOrder 排序、未分组垫底；只列有可测账号的组
+  const accountSections = useMemo(() => {
+    const sections = [...(groups ?? [])]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((g) => ({ key: g.id, name: g.name, accounts: testable.filter((a) => a.groupId === g.id) }))
+      .filter((s) => s.accounts.length > 0);
+    const ungrouped = testable.filter((a) => !a.groupId);
+    if (ungrouped.length) {
+      sections.push({ key: "__ungrouped", name: "未分组", accounts: ungrouped });
+    }
+    return sections;
+  }, [groups, testable]);
+
   if (!accounts || !settings) return null;
 
   const models = settings.models;
@@ -73,12 +90,20 @@ export default function ModelTestPage() {
   const selectedModels = (settings.selected ?? DEFAULT_TEST_MODELS).filter((m) =>
     models.includes(m),
   );
-  // selectedIds 为 null 表示"尚未手动选择"→ 默认全选可测账号
-  const selected = selectedIds ?? testable.map((a) => a.id);
+  // 已选计数按 testable 交集算——账号被禁用/删除后 selected 里的残留 id 不计入
+  const selectedCount = testable.filter((a) => selected.includes(a.id)).length;
   const toggleAccount = (id: string) =>
-    setSelectedIds(
-      selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id],
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
+  /** 整组勾选/取消账号：组内全选中则清空该组，否则补齐该组 */
+  const toggleAccountGroup = (ids: string[]) =>
+    setSelected((prev) => {
+      const allOn = ids.every((id) => prev.includes(id));
+      return allOn
+        ? prev.filter((id) => !ids.includes(id))
+        : [...new Set([...prev, ...ids])];
+    });
 
   async function persistModelState(nextModels: string[], nextSelected: string[]) {
     await modelTestSettingsItem.setValue({
@@ -227,6 +252,34 @@ export default function ModelTestPage() {
     abortRef.current?.abort();
   }
 
+  const renderAccountCard = (account: Account) => {
+    const on = selected.includes(account.id);
+    return (
+      <button
+        key={account.id}
+        onClick={() => toggleAccount(account.id)}
+        className={cn(
+          "flex items-center gap-2.5 rounded-lg border p-2.5 text-left transition",
+          on ? "border-phos/50 bg-phos/5" : "border-line hover:border-ink-faint/40",
+        )}
+      >
+        <SiteAvatar name={account.name} faviconUrl={account.faviconUrl} size="sm" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] text-ink">{account.name}</p>
+          <p className="readout truncate text-[11px] text-ink-faint">
+            {SITE_TYPE_LABELS[account.siteType]}
+          </p>
+        </div>
+        <span
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 rounded border",
+            on ? "border-phos bg-phos" : "border-line",
+          )}
+        />
+      </button>
+    );
+  };
+
   async function runTests() {
     const targets = testable.filter((a) => selected.includes(a.id));
     if (!targets.length) {
@@ -311,38 +364,88 @@ export default function ModelTestPage() {
         <EmptyState icon={<FlaskConical size={24} />} text="没有可测试的账号——请先添加 New API 系账号并启用" />
       ) : (
         <>
-          {/* 账号选择 */}
+          {/* 账号选择：按分组分段，默认不选，勾选决定测哪些 */}
           <section className="space-y-2">
-            <h2 className="text-[11px] uppercase tracking-[0.14em] text-ink-faint">账号</h2>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {testable.map((account) => {
-                const on = selected.includes(account.id);
-                return (
-                  <button
-                    key={account.id}
-                    onClick={() => toggleAccount(account.id)}
-                    className={cn(
-                      "flex items-center gap-2.5 rounded-lg border p-2.5 text-left transition",
-                      on ? "border-phos/50 bg-phos/5" : "border-line hover:border-ink-faint/40",
-                    )}
-                  >
-                    <SiteAvatar name={account.name} faviconUrl={account.faviconUrl} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] text-ink">{account.name}</p>
-                      <p className="readout truncate text-[11px] text-ink-faint">
-                        {SITE_TYPE_LABELS[account.siteType]}
-                      </p>
-                    </div>
-                    <span
-                      className={cn(
-                        "h-3.5 w-3.5 shrink-0 rounded border",
-                        on ? "border-phos bg-phos" : "border-line",
-                      )}
-                    />
-                  </button>
-                );
-              })}
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-[11px] uppercase tracking-[0.14em] text-ink-faint">账号</h2>
+              <span className="text-[11px] text-ink-faint">
+                已选 {selectedCount} / {testable.length}
+              </span>
+              <button
+                onClick={() => setSelected(testable.map((a) => a.id))}
+                className="text-[11px] text-ink-faint underline-offset-2 hover:text-ink hover:underline"
+              >
+                全选
+              </button>
+              <button
+                onClick={() => setSelected([])}
+                className="text-[11px] text-ink-faint underline-offset-2 hover:text-ink hover:underline"
+              >
+                全不选
+              </button>
             </div>
+            {(groups ?? []).length === 0 ? (
+              // 从未建过分组——保持平铺网格，不套多余的"未分组"组头
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {testable.map(renderAccountCard)}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {accountSections.map((section) => {
+                  const onCount = section.accounts.filter((a) => selected.includes(a.id)).length;
+                  const allOn = onCount === section.accounts.length;
+                  const isCollapsed = collapsedGroups[section.key] ?? false;
+                  return (
+                    <div key={section.key} className="rounded-lg border border-line p-2.5">
+                      <div className={cn("flex items-center gap-2", !isCollapsed && "mb-2")}>
+                        <button
+                          onClick={() => toggleAccountGroup(section.accounts.map((a) => a.id))}
+                          title={allOn ? "取消整组" : "勾选整组"}
+                        >
+                          <span
+                            className={cn(
+                              "block h-3 w-3 shrink-0 rounded border",
+                              allOn
+                                ? "border-phos bg-phos"
+                                : onCount > 0
+                                  ? "border-phos bg-phos/40"
+                                  : "border-line",
+                            )}
+                          />
+                        </button>
+                        <button
+                          onClick={() =>
+                            setCollapsedGroups((prev) => ({
+                              ...prev,
+                              [section.key]: !isCollapsed,
+                            }))
+                          }
+                          className="flex flex-1 items-center gap-2 text-left"
+                          title={isCollapsed ? "展开" : "收起"}
+                        >
+                          <span className="text-[12px] text-ink">{section.name}</span>
+                          <span className="text-[11px] text-ink-faint">
+                            {onCount}/{section.accounts.length}
+                          </span>
+                          <ChevronRight
+                            size={12}
+                            className={cn(
+                              "ml-auto shrink-0 text-ink-faint transition-transform",
+                              !isCollapsed && "rotate-90",
+                            )}
+                          />
+                        </button>
+                      </div>
+                      {!isCollapsed && (
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                          {section.accounts.map(renderAccountCard)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
           {/* 模型选择：按厂商分组，勾选决定测哪些 */}
@@ -403,7 +506,10 @@ export default function ModelTestPage() {
                           {onCount}/{group.models.length}
                         </span>
                         <span className="ml-auto text-ink-faint">
-                          {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                          <ChevronRight
+                            size={12}
+                            className={cn("transition-transform", !isCollapsed && "rotate-90")}
+                          />
                         </span>
                       </button>
                     </div>
@@ -458,58 +564,60 @@ export default function ModelTestPage() {
             </div>
           </section>
 
-          {/* 手填 key（自动拉失败时用）*/}
-          <section className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-[11px] uppercase tracking-[0.14em] text-ink-faint">
-                API Key（自动拉取失败时手填）
-              </h2>
-              <Button size="sm" disabled={pullingKeys || running} onClick={() => void pullTokens()}>
-                {pullingKeys ? <Spinner /> : "拉取令牌"}
-              </Button>
-              <span className="text-[11px] text-ink-faint">
-                自动从选中账号拉第一个可用令牌填入下方
-              </span>
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {testable
-                .filter((a) => selected.includes(a.id))
-                .map((account) => (
-                  <label key={account.id} className="flex items-center gap-2">
-                    <span className="w-24 shrink-0 truncate text-[12px] text-ink-mute">
-                      {account.name}
-                    </span>
-                    <div className="relative flex-1">
-                      <Input
-                        type={keyVisible[account.id] ? "text" : "password"}
-                        value={manualKeyEdit[account.id] ?? ""}
-                        onChange={(e) =>
-                          setManualKeyEdit((prev) => ({ ...prev, [account.id]: e.target.value }))
-                        }
-                        placeholder={
-                          account.apiKeys?.length
-                            ? "已存密钥——解锁保险库后自动使用"
-                            : settings.manualKeys[account.id]
-                              ? "已记忆——留空用自动/记忆值"
-                              : "留空则自动拉取"
-                        }
-                        autoComplete="off"
-                        className="w-full pr-12"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setKeyVisible((prev) => ({ ...prev, [account.id]: !prev[account.id] }))
-                        }
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-ink-faint hover:text-ink"
-                      >
-                        {keyVisible[account.id] ? "隐藏" : "显示"}
-                      </button>
-                    </div>
-                  </label>
-                ))}
-            </div>
-          </section>
+          {/* 手填 key（自动拉失败时用）——选了账号才有内容可填 */}
+          {selectedCount > 0 && (
+            <section className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-[11px] uppercase tracking-[0.14em] text-ink-faint">
+                  API Key（自动拉取失败时手填）
+                </h2>
+                <Button size="sm" disabled={pullingKeys || running} onClick={() => void pullTokens()}>
+                  {pullingKeys ? <Spinner /> : "拉取令牌"}
+                </Button>
+                <span className="text-[11px] text-ink-faint">
+                  自动从选中账号拉第一个可用令牌填入下方
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {testable
+                  .filter((a) => selected.includes(a.id))
+                  .map((account) => (
+                    <label key={account.id} className="flex items-center gap-2">
+                      <span className="w-24 shrink-0 truncate text-[12px] text-ink-mute">
+                        {account.name}
+                      </span>
+                      <div className="relative flex-1">
+                        <Input
+                          type={keyVisible[account.id] ? "text" : "password"}
+                          value={manualKeyEdit[account.id] ?? ""}
+                          onChange={(e) =>
+                            setManualKeyEdit((prev) => ({ ...prev, [account.id]: e.target.value }))
+                          }
+                          placeholder={
+                            account.apiKeys?.length
+                              ? "已存密钥——解锁保险库后自动使用"
+                              : settings.manualKeys[account.id]
+                                ? "已记忆——留空用自动/记忆值"
+                                : "留空则自动拉取"
+                          }
+                          autoComplete="off"
+                          className="w-full pr-12"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setKeyVisible((prev) => ({ ...prev, [account.id]: !prev[account.id] }))
+                          }
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-ink-faint hover:text-ink"
+                        >
+                          {keyVisible[account.id] ? "隐藏" : "显示"}
+                        </button>
+                      </div>
+                    </label>
+                  ))}
+              </div>
+            </section>
+          )}
 
           {/* 测试节奏 */}
           <section className="space-y-2">
