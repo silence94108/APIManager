@@ -104,6 +104,13 @@ export default function AccountsPage() {
             </div>
             <p className="readout truncate text-[11px] text-ink-faint">{account.url}</p>
           </div>
+          <button
+            title="打开站点"
+            onClick={() => void browser.tabs.create({ url: account.url })}
+            className="-mt-0.5 rounded px-1 text-[13px] leading-none text-ink-mute opacity-70 transition hover:bg-carbon hover:text-phos group-hover:opacity-100"
+          >
+            ↗
+          </button>
           <StatusDot status={dotStatus(account)} />
         </div>
 
