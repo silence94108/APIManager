@@ -354,8 +354,8 @@ export default function ModelTestPage() {
       <div>
         <h1 className="readout mb-1 text-[15px] text-ink">模型测试</h1>
         <p className="text-[12px] text-ink-faint">
-          向站点真实发送一条短对话验证模型是否可用——只有真正返回内容才算通过。
-          <span className="text-amber">每次测试会消耗少量额度；请求之间会模拟真人节奏随机停顿，避免账号被风控。</span>
+          向站点真实发送一条流式短对话验证模型是否可用——收到首个回包内容才算通过，随即断开连接以省额度；耗时记录的是首字时间，最长等 120 秒。
+          <span className="text-amber">每次测试会消耗少量额度（个别渠道可能虚报用量，异常时可对照站点日志核账）；请求之间会模拟真人节奏随机停顿，避免账号被风控。</span>
           仅支持 New API 系账号（New API / Veloera / AnyRouter）。
         </p>
       </div>
@@ -726,7 +726,7 @@ function ResultCell({ state }: { state?: CellState }) {
       {outcome.status === "ok" ? (
         <Badge tone="phos">
           <span className="inline-flex items-center gap-0.5">
-            <Check size={11} /> {outcome.latencyMs}ms
+            <Check size={11} /> 首字 {outcome.latencyMs}ms
           </span>
         </Badge>
       ) : (

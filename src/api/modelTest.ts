@@ -111,7 +111,7 @@ export type ModelTestStatus = "ok" | "invalid_key" | "no_model" | "rate_limited"
 
 export interface ModelTestOutcome {
   status: ModelTestStatus;
-  /** ok 时的往返耗时（ms） */
+  /** ok 时的首字耗时（ms）——流式下收到首个内容片段的时间；非流式兜底时为整个响应耗时 */
   latencyMs?: number;
   /** ok 时返回内容前 80 字，或失败原因 */
   message?: string;
@@ -211,8 +211,39 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
- * 真实测活：向 {origin}/v1/chat/completions 发一条随机化短对话，用 sk- key 鉴权。
- * 不发 max_tokens:1 探针——像正常流量，避免被站点判定为测活。30s 超时。
+ * 首字超时：从发起请求到收到首个内容片段的最长等待。
+ * 中转站「渠道失败→自动换渠道重试」+ 慢模型排队，1~2 分钟才出首字并不罕见，
+ * 30s 会把「慢但活着」误判成失败——而站点侧照样跑完并计费。
+ */
+export const FIRST_TOKEN_TIMEOUT_MS = 120_000;
+
+/** SSE 事件行解析：data 行 → 内容片段 / 流内错误 / 结束标记；其余行（心跳、空行、坏 JSON、空 delta）返回 null */
+export function parseSseLine(
+  line: string,
+): { content?: string; error?: string; done?: boolean } | null {
+  const l = line.trim();
+  if (!l.startsWith("data:")) return null;
+  const payload = l.slice(5).trim();
+  if (payload === "[DONE]") return { done: true };
+  try {
+    const j = JSON.parse(payload) as {
+      choices?: { delta?: { content?: string; reasoning_content?: string } }[];
+      error?: { message?: string };
+    };
+    if (j.error) return { error: j.error.message ?? "流内返回错误" };
+    const delta = j.choices?.[0]?.delta;
+    // 思考型模型可能先吐 reasoning——也证明模型活着在生成
+    const content = delta?.content || delta?.reasoning_content || "";
+    return content ? { content } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 真实测活：向 {origin}/v1/chat/completions 发一条随机化短对话（流式），用 sk- key 鉴权。
+ * 收到首个内容片段即判定可用并断开连接——不等全文，省输出额度；latencyMs 记的是首字耗时。
+ * 渠道无视 stream 直接回整段 JSON 时，按非流式解析兜底。
  */
 export async function testModel(
   origin: string,
@@ -221,7 +252,7 @@ export async function testModel(
 ): Promise<ModelTestOutcome> {
   const prompt = randomPrompt();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30_000);
+  const timer = setTimeout(() => controller.abort(), FIRST_TOKEN_TIMEOUT_MS);
   const startedAt = Date.now();
   try {
     const res = await fetch(`${origin}/v1/chat/completions`, {
@@ -231,23 +262,62 @@ export async function testModel(
         model,
         messages: [{ role: "user", content: prompt }],
         max_tokens: 120,
-        stream: false,
+        stream: true,
       }),
       signal: controller.signal,
     });
-    const latencyMs = Date.now() - startedAt;
 
-    let body: ChatCompletionResponse | null = null;
-    try {
-      body = (await res.json()) as ChatCompletionResponse;
-    } catch {
-      // 非 JSON（登录页/CF 拦截页等）——归失败
-      if (res.status === 200) return { status: "failed", message: "响应非 JSON（可能被拦截）", prompt };
+    const isSse = (res.headers.get("content-type") ?? "").includes("text/event-stream");
+    if (res.status !== 200 || !isSse) {
+      // 非 200 错误，或渠道无视 stream 回了整段 JSON——走原非流式判定
+      const latencyMs = Date.now() - startedAt;
+      let body: ChatCompletionResponse | null = null;
+      try {
+        body = (await res.json()) as ChatCompletionResponse;
+      } catch {
+        // 非 JSON（登录页/CF 拦截页等）——归失败
+        if (res.status === 200) return { status: "failed", message: "响应非 JSON（可能被拦截）", prompt };
+      }
+      return { ...parseTestOutcome(res.status, body, latencyMs), prompt };
     }
-    return { ...parseTestOutcome(res.status, body, latencyMs), prompt };
+
+    const reader = res.body?.getReader();
+    if (!reader) return { status: "failed", message: "响应流不可读", prompt };
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
+        const ev = parseSseLine(line);
+        if (!ev) continue;
+        if (ev.content) {
+          // 模型真的在吐字——判定可用，立刻断开（站点侧一般会随之取消上游生成）
+          const latencyMs = Date.now() - startedAt;
+          controller.abort();
+          return { status: "ok", latencyMs, message: ev.content.slice(0, 80), prompt };
+        }
+        if (ev.error) {
+          controller.abort();
+          return { status: "failed", message: ev.error, prompt };
+        }
+        if (ev.done) {
+          controller.abort();
+          return { status: "failed", message: "返回内容为空（可能被拦截或路由异常）", prompt };
+        }
+      }
+    }
+    return { status: "failed", message: "返回内容为空（可能被拦截或路由异常）", prompt };
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") {
-      return { status: "failed", message: "请求超时（30s）", prompt };
+      return {
+        status: "failed",
+        message: `等待首字超时（${FIRST_TOKEN_TIMEOUT_MS / 1000}s 无回包）`,
+        prompt,
+      };
     }
     return { status: "failed", message: e instanceof Error ? e.message : String(e), prompt };
   } finally {

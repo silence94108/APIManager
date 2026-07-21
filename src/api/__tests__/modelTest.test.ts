@@ -5,6 +5,7 @@ import {
   nextDelayMs,
   normalizeApiKey,
   PACING_PRESETS,
+  parseSseLine,
   parseTestOutcome,
   pickUsableKey,
   sleep,
@@ -117,6 +118,38 @@ describe("parseTestOutcome", () => {
     const r = parseTestOutcome(500, { error: { message: "internal error" } }, 0);
     expect(r.status).toBe("failed");
     expect(r.message).toBe("internal error");
+  });
+});
+
+describe("parseSseLine 流式行解析", () => {
+  it("data 行取 delta.content", () => {
+    expect(parseSseLine('data: {"choices":[{"delta":{"content":"你"}}]}')).toEqual({
+      content: "你",
+    });
+  });
+
+  it("思考型模型先吐 reasoning_content 也算内容", () => {
+    expect(parseSseLine('data: {"choices":[{"delta":{"reasoning_content":"嗯"}}]}')).toEqual({
+      content: "嗯",
+    });
+  });
+
+  it("[DONE] → 结束标记", () => {
+    expect(parseSseLine("data: [DONE]")).toEqual({ done: true });
+  });
+
+  it("流内 error → 透传错误信息", () => {
+    expect(parseSseLine('data: {"error":{"message":"boom"}}')).toEqual({ error: "boom" });
+    expect(parseSseLine('data: {"error":{}}')).toEqual({ error: "流内返回错误" });
+  });
+
+  it("空 delta / 非 data 行 / 心跳 / 空行 / 坏 JSON → null", () => {
+    expect(parseSseLine('data: {"choices":[{"delta":{}}]}')).toBeNull();
+    expect(parseSseLine('data: {"choices":[{"delta":{"content":""}}]}')).toBeNull();
+    expect(parseSseLine(": ping")).toBeNull();
+    expect(parseSseLine("event: message")).toBeNull();
+    expect(parseSseLine("")).toBeNull();
+    expect(parseSseLine("data: {broken")).toBeNull();
   });
 });
 
