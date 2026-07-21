@@ -116,25 +116,27 @@ export default function AccountRow({
         )}
       </div>
 
-      {/* 非 hover 态：失败/待验证时余额位让给快捷操作——问题账号不该藏在 hover 后面 */}
-      {status === "failed" && !busy ? (
-        <button
-          title={`签到失败${results[account.id]?.message ? `：${results[account.id].message}` : ""}，点击重试`}
-          onClick={checkin}
-          className="shrink-0 rounded border border-signal/40 px-1.5 py-px text-[11px] text-signal transition hover:bg-carbon group-hover:hidden"
-        >
-          ↯ 重试
-        </button>
-      ) : status === "verify" && !busy ? (
-        <button
-          title="需人机验证——去签到页手动完成后再签"
-          onClick={() => window.open(resolveCheckinPageUrl(account))}
-          className="shrink-0 rounded border border-amber/40 px-1.5 py-px text-[11px] text-amber transition hover:bg-carbon group-hover:hidden"
-        >
-          ⚠ 验证
-        </button>
-      ) : (
-        <span className="flex shrink-0 flex-col items-end group-hover:hidden">
+      {/* 非 hover 态：余额/用量常显；失败/待验证在余额左侧加带色图标钮——问题账号不藏 hover，也不挡数字 */}
+      <div className="flex shrink-0 items-center gap-1.5 group-hover:hidden">
+        {status === "failed" && !busy && (
+          <button
+            title={`签到失败${results[account.id]?.message ? `：${results[account.id].message}` : ""}，点击重试`}
+            onClick={checkin}
+            className="rounded border border-signal/40 px-1 py-px text-[11px] text-signal transition hover:bg-carbon"
+          >
+            ↯
+          </button>
+        )}
+        {status === "verify" && !busy && (
+          <button
+            title="需人机验证——去签到页手动完成后再签"
+            onClick={() => window.open(resolveCheckinPageUrl(account))}
+            className="rounded border border-amber/40 px-1 py-px text-[11px] text-amber transition hover:bg-carbon"
+          >
+            ⚠
+          </button>
+        )}
+        <span className="flex flex-col items-end">
           <span className="readout text-[13px] text-ink-mute">
             {account.balance ? formatUsd(account.balance.usd) : "—"}
           </span>
@@ -149,7 +151,7 @@ export default function AccountRow({
             </span>
           ) : null}
         </span>
-      )}
+      </div>
     </div>
   );
 }
