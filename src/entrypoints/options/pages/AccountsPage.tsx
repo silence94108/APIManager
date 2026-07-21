@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ArrowUpRight, ChevronRight, KeyRound, LayoutGrid } from "lucide-react";
 import { deleteAccount } from "@/storage/accounts";
 import { setGroupCollapsed } from "@/storage/groupsTags";
 import { accountsItem, groupsItem, tagsItem } from "@/storage/items";
@@ -10,6 +11,7 @@ import {
   type FormState,
   toForm,
 } from "@/ui/AccountFormDialog";
+import { ApiKeyPickerDialog, copyApiKey } from "@/ui/ApiKeyPicker";
 import {
   Badge,
   Button,
@@ -21,7 +23,8 @@ import {
   StatusDot,
   toast,
 } from "@/ui/components";
-import { useStorageItem } from "@/ui/hooks";
+import { useStorageItem, useVaultGate } from "@/ui/hooks";
+import { UnlockDialog } from "@/ui/UnlockDialog";
 
 interface Section {
   key: string;
@@ -39,8 +42,11 @@ export default function AccountsPage() {
 
   const [editing, setEditing] = useState<FormState | null>(null);
   const [deleting, setDeleting] = useState<Account | null>(null);
+  /** 多条密钥时弹选择列表；单条直接复制 */
+  const [pickingKeys, setPickingKeys] = useState<Account | null>(null);
   // 未分组区块的折叠态——不落在 Group 上，仅本页会话内记忆
   const [ungroupedCollapsed, setUngroupedCollapsed] = useState(false);
+  const { gate, unlockDialogProps } = useVaultGate();
 
   const tagName = useMemo(() => {
     const map = new Map((tags ?? []).map((t) => [t.id, t.name]));
@@ -104,12 +110,25 @@ export default function AccountsPage() {
             </div>
             <p className="readout truncate text-[11px] text-ink-faint">{account.url}</p>
           </div>
+          {(account.apiKeys?.length ?? 0) > 0 && (
+            <button
+              title="复制 API 密钥"
+              onClick={() => {
+                const keys = account.apiKeys!;
+                if (keys.length === 1) gate(() => void copyApiKey(keys[0]));
+                else setPickingKeys(account);
+              }}
+              className="rounded p-1 text-ink-mute opacity-70 transition hover:bg-carbon hover:text-phos group-hover:opacity-100"
+            >
+              <KeyRound size={14} />
+            </button>
+          )}
           <button
             title="打开站点"
             onClick={() => void browser.tabs.create({ url: account.url })}
-            className="-mt-0.5 rounded px-1 text-[13px] leading-none text-ink-mute opacity-70 transition hover:bg-carbon hover:text-phos group-hover:opacity-100"
+            className="rounded p-1 text-ink-mute opacity-70 transition hover:bg-carbon hover:text-phos group-hover:opacity-100"
           >
-            ↗
+            <ArrowUpRight size={14} />
           </button>
           <StatusDot status={dotStatus(account)} />
         </div>
@@ -183,7 +202,7 @@ export default function AccountsPage() {
 
       {accounts.length === 0 ? (
         <EmptyState
-          icon="▦"
+          icon={<LayoutGrid size={24} />}
           text="还没有账号——添加一个中转站账号，或在「数据」页导入 all-api-hub 备份"
           action={
             <Button variant="phos" onClick={() => setEditing({ ...EMPTY_FORM })}>
@@ -208,14 +227,13 @@ export default function AccountsPage() {
                   className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition hover:bg-raised/60"
                   title={collapsed ? "展开分组" : "收起分组"}
                 >
-                  <span
+                  <ChevronRight
+                    size={12}
                     className={cn(
-                      "readout inline-block text-[10px] text-ink-faint transition-transform",
+                      "shrink-0 text-ink-faint transition-transform",
                       !collapsed && "rotate-90",
                     )}
-                  >
-                    ▶
-                  </span>
+                  />
                   <span className="truncate text-[12px] font-medium text-ink-mute">
                     {section.group?.name ?? "未分组"}
                   </span>
@@ -246,6 +264,19 @@ export default function AccountsPage() {
           onClose={() => setEditing(null)}
         />
       )}
+
+      {pickingKeys && (
+        <ApiKeyPickerDialog
+          account={pickingKeys}
+          onPick={(k) => {
+            setPickingKeys(null);
+            gate(() => void copyApiKey(k));
+          }}
+          onClose={() => setPickingKeys(null)}
+        />
+      )}
+
+      <UnlockDialog {...unlockDialogProps} />
 
       <ConfirmDialog
         open={!!deleting}

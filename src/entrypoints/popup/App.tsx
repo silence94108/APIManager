@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Clock, LayoutGrid, RefreshCw, ScanSearch, Settings, Zap } from "lucide-react";
 import { formatRunSummary } from "@/checkin/helpers";
 import { detectCurrentSite } from "@/detect/detectCurrentSite";
 import { sendMessage } from "@/messaging/protocol";
@@ -14,8 +15,10 @@ import type { Account, Group } from "@/types";
 import { localDayString } from "@/utils/day";
 import { formatUsd, sumBalanceUsd } from "@/utils/quota";
 import { AccountFormDialog, fromDetected, mergeDetectedIntoAccount, toForm, type FormState } from "@/ui/AccountFormDialog";
+import { ApiKeyPickerDialog, copyApiKey } from "@/ui/ApiKeyPicker";
 import { Button, cn, EmptyState, Spinner, ToastHost, toast } from "@/ui/components";
-import { useStorageItem } from "@/ui/hooks";
+import { useStorageItem, useVaultGate } from "@/ui/hooks";
+import { UnlockDialog } from "@/ui/UnlockDialog";
 import AccountRow from "./components/AccountRow";
 import GroupSection from "./components/GroupSection";
 import TagFilterBar from "./components/TagFilterBar";
@@ -41,6 +44,15 @@ export default function App() {
   const [ungroupedCollapsed, setUngroupedCollapsed] = useState(false);
   const [busyAll, setBusyAll] = useState<"checkin" | "refresh" | "detect" | null>(null);
   const [formState, setFormState] = useState<FormState | null>(null); // 识别与编辑共用同一个表单弹窗
+  /** 多条密钥时弹选择列表；单条直接复制 */
+  const [pickingKeys, setPickingKeys] = useState<Account | null>(null);
+  const { gate, unlockDialogProps } = useVaultGate();
+
+  function copyKeyFor(account: Account) {
+    const keys = account.apiKeys ?? [];
+    if (keys.length === 1) gate(() => void copyApiKey(keys[0]));
+    else if (keys.length > 1) setPickingKeys(account);
+  }
 
   const today = localDayString();
 
@@ -135,8 +147,8 @@ export default function App() {
     <div
       className={cn(
         "flex max-h-[580px] w-[380px] flex-col",
-        // 弹窗打开时撑高视口，否则账号少时 popup 太矮、表单被压扁
-        formState && "min-h-[560px]",
+        // 弹窗打开时撑高视口，否则账号少时 popup 太矮、弹窗被压扁
+        (formState || pickingKeys || unlockDialogProps.open) && "min-h-[560px]",
       )}
     >
       <header className="relative border-b border-line px-4 pb-3 pt-4">
@@ -165,16 +177,16 @@ export default function App() {
               onClick={detect}
               title="识别当前标签页的中转站账号"
             >
-              {busyAll === "detect" ? <Spinner /> : "⊕ 识别"}
+              {busyAll === "detect" ? <Spinner /> : <><ScanSearch size={13} /> 识别</>}
             </Button>
             <Button size="sm" variant="phos" disabled={busyAll !== null} onClick={checkinAll} title="全部签到">
-              {busyAll === "checkin" ? <Spinner /> : "⚡ 全签"}
+              {busyAll === "checkin" ? <Spinner /> : <><Zap size={13} /> 全签</>}
             </Button>
             <Button size="sm" disabled={busyAll !== null} onClick={refreshAll} title="刷新全部余额">
-              {busyAll === "refresh" ? <Spinner /> : "↻"}
+              {busyAll === "refresh" ? <Spinner /> : <RefreshCw size={13} />}
             </Button>
             <Button size="sm" onClick={() => void browser.runtime.openOptionsPage()} title="设置">
-              ⚙
+              <Settings size={13} />
             </Button>
           </div>
         </div>
@@ -204,7 +216,7 @@ export default function App() {
         {accounts.length === 0 ? (
           <div className="p-2">
             <EmptyState
-              icon="▦"
+              icon={<LayoutGrid size={24} />}
               text="还没有账号——去设置页添加，或导入 all-api-hub 备份一键迁移"
               action={
                 <Button variant="phos" onClick={() => void browser.runtime.openOptionsPage()}>
@@ -237,6 +249,7 @@ export default function App() {
                   results={results ?? {}}
                   today={today}
                   onEdit={(a) => setFormState(toForm(a))}
+                  onCopyKey={copyKeyFor}
                 />
               ))}
             </GroupSection>
@@ -248,10 +261,20 @@ export default function App() {
         <span className="readout text-[10px] uppercase tracking-[0.16em] text-ink-faint">
           APIManager
         </span>
-        <span className={cn("text-[11px]", nextDaily ? "text-ink-faint" : "text-ink-faint/60")}>
-          {nextDaily
-            ? `◔ 下次自动签到 ${new Date(nextDaily).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })}`
-            : "自动签到未开启"}
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 text-[11px]",
+            nextDaily ? "text-ink-faint" : "text-ink-faint/60",
+          )}
+        >
+          {nextDaily ? (
+            <>
+              <Clock size={11} />
+              {`下次自动签到 ${new Date(nextDaily).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })}`}
+            </>
+          ) : (
+            "自动签到未开启"
+          )}
         </span>
       </footer>
 
@@ -263,6 +286,19 @@ export default function App() {
           onClose={() => setFormState(null)}
         />
       )}
+
+      {pickingKeys && (
+        <ApiKeyPickerDialog
+          account={pickingKeys}
+          onPick={(k) => {
+            setPickingKeys(null);
+            gate(() => void copyApiKey(k));
+          }}
+          onClose={() => setPickingKeys(null)}
+        />
+      )}
+
+      <UnlockDialog {...unlockDialogProps} />
 
       <ToastHost />
     </div>

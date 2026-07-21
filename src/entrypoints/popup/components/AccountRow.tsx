@@ -1,4 +1,14 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import {
+  ArrowUpRight,
+  Hand,
+  KeyRound,
+  Pencil,
+  RefreshCw,
+  RotateCcw,
+  TriangleAlert,
+  Zap,
+} from "lucide-react";
 import { canCheckin, resolveCheckinPageUrl } from "@/checkin/helpers";
 import { sendMessage } from "@/messaging/protocol";
 import { checkinResultsItem } from "@/storage/items";
@@ -11,11 +21,13 @@ export default function AccountRow({
   results,
   today,
   onEdit,
+  onCopyKey,
 }: {
   account: Account;
   results: CheckinResults;
   today: string;
   onEdit: (account: Account) => void;
+  onCopyKey: (account: Account) => void;
 }) {
   const [busy, setBusy] = useState<"checkin" | "refresh" | null>(null);
   const [pulse, setPulse] = useState(false);
@@ -92,25 +104,30 @@ export default function AccountRow({
           <>
             {eligible && (
               <RowAction title="签到" onClick={checkin}>
-                ⚡
+                <Zap size={13} />
               </RowAction>
             )}
             {hasBalance && (
               <RowAction title="刷新余额" onClick={refresh}>
-                ↻
+                <RefreshCw size={13} />
+              </RowAction>
+            )}
+            {(account.apiKeys?.length ?? 0) > 0 && (
+              <RowAction title="复制 API 密钥" onClick={() => onCopyKey(account)}>
+                <KeyRound size={13} />
               </RowAction>
             )}
             <RowAction title="编辑账号" onClick={() => onEdit(account)}>
-              ✎
+              <Pencil size={13} />
             </RowAction>
             {/* 不参与自动签到但配了自定义签到链接的账号（如仅记录型）也给手动入口 */}
             {(eligible || !!account.checkinPageUrl?.trim()) && (
               <RowAction title="去签到页" onClick={() => window.open(resolveCheckinPageUrl(account))}>
-                ✋
+                <Hand size={13} />
               </RowAction>
             )}
             <RowAction title="打开站点" onClick={() => window.open(account.url)}>
-              ↗
+              <ArrowUpRight size={13} />
             </RowAction>
           </>
         )}
@@ -122,18 +139,18 @@ export default function AccountRow({
           <button
             title={`签到失败${results[account.id]?.message ? `：${results[account.id].message}` : ""}，点击重试`}
             onClick={checkin}
-            className="rounded border border-signal/40 px-1 py-px text-[11px] text-signal transition hover:bg-carbon"
+            className="rounded border border-signal/40 p-1 text-signal transition hover:bg-carbon"
           >
-            ↯
+            <RotateCcw size={12} />
           </button>
         )}
         {status === "verify" && !busy && (
           <button
             title="需人机验证——去签到页手动完成后再签"
             onClick={() => window.open(resolveCheckinPageUrl(account))}
-            className="rounded border border-amber/40 px-1 py-px text-[11px] text-amber transition hover:bg-carbon"
+            className="rounded border border-amber/40 p-1 text-amber transition hover:bg-carbon"
           >
-            ⚠
+            <TriangleAlert size={12} />
           </button>
         )}
         <span className="flex flex-col items-end">
@@ -163,13 +180,13 @@ function RowAction({
 }: {
   title: string;
   onClick: () => void;
-  children: string;
+  children: ReactNode;
 }) {
   return (
     <button
       title={title}
       onClick={onClick}
-      className="rounded px-1.5 py-0.5 text-[12px] text-ink-mute transition hover:bg-carbon hover:text-phos"
+      className="rounded px-1.5 py-0.5 text-ink-mute transition hover:bg-carbon hover:text-phos"
     >
       {children}
     </button>

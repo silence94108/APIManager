@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { X } from "lucide-react";
 import { saveAccount, type AccountDraft } from "@/storage/accounts";
 import { vaultMetaItem } from "@/storage/items";
 import { sendMessage } from "@/messaging/protocol";
@@ -11,6 +12,7 @@ import {
   SITE_TYPES,
   SITE_TYPE_LABELS,
   type Account,
+  type ApiKeyEntry,
   type EncryptedBlob,
   type OAuthProvider,
   type SiteType,
@@ -22,6 +24,15 @@ import { useStorageItem } from "@/ui/hooks";
 import { UnlockDialog } from "@/ui/UnlockDialog";
 
 type CredKind = "none" | "password" | "oauth";
+
+/** API 密钥表单行——已有条目带 keyEnc（key 输入留空不改），新增条目只有 plainKey 明文 */
+export interface FormApiKey {
+  id: string;
+  name: string;
+  keyEnc?: EncryptedBlob;
+  plainKey: string;
+  createdAt?: number;
+}
 
 export interface FormState {
   id?: string;
@@ -46,6 +57,8 @@ export interface FormState {
   passwordEnc?: EncryptedBlob;
   oauthProvider: OAuthProvider;
   oauthIdentity: string;
+  /** API 密钥列表——空行（无密文无明文）提交时静默丢弃 */
+  apiKeys: FormApiKey[];
   /** 站点 favicon URL——透传字段，识别时带入、编辑时保留，无可编辑 UI */
   faviconUrl?: string;
 }
@@ -68,6 +81,7 @@ export const EMPTY_FORM: FormState = {
   credPassword: "",
   oauthProvider: "linuxdo",
   oauthIdentity: "",
+  apiKeys: [],
 };
 
 export function toForm(account: Account): FormState {
@@ -92,6 +106,13 @@ export function toForm(account: Account): FormState {
     passwordEnc: cred?.kind === "password" ? cred.passwordEnc : undefined,
     oauthProvider: cred?.kind === "oauth" ? cred.provider : "linuxdo",
     oauthIdentity: cred?.kind === "oauth" ? (cred.identity ?? "") : "",
+    apiKeys: (account.apiKeys ?? []).map((k) => ({
+      id: k.id,
+      name: k.name,
+      keyEnc: k.keyEnc,
+      plainKey: "",
+      createdAt: k.createdAt,
+    })),
     faviconUrl: account.faviconUrl,
   };
 }
@@ -148,10 +169,17 @@ export function AccountFormDialog({
 }) {
   const [form, setForm] = useState(initial);
   const [errors, setErrors] = useState<
-    Partial<Record<"name" | "url" | "userId" | "accessToken" | "credUsername" | "credPassword", string>>
+    Partial<
+      Record<
+        "name" | "url" | "userId" | "accessToken" | "credUsername" | "credPassword" | "apiKeys",
+        string
+      >
+    >
   >({});
   const [showUnlock, setShowUnlock] = useState(false);
   const [revealed, setRevealed] = useState<string | null>(null);
+  /** 已解密显示的 API 密钥明文——按行 id 记录 */
+  const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({});
   /** 需解锁的操作暂存于此，解锁成功后续跑 */
   const pendingRef = useRef<(() => void) | null>(null);
   const vaultMeta = useStorageItem(vaultMetaItem);
@@ -189,6 +217,29 @@ export function AccountFormDialog({
       .catch(() => toast("解密失败，密文可能来自其他主密码", "err"));
   }
 
+  const setKeyRow = (id: string, patch: Partial<FormApiKey>) =>
+    set({ apiKeys: form.apiKeys.map((k) => (k.id === id ? { ...k, ...patch } : k)) });
+
+  const removeKeyRow = (id: string) => {
+    set({ apiKeys: form.apiKeys.filter((k) => k.id !== id) });
+    setRevealedKeys(({ [id]: _, ...rest }) => rest);
+  };
+
+  function revealKey(row: FormApiKey) {
+    if (!row.keyEnc) return;
+    decryptSecret(row.keyEnc)
+      .then((plain) => setRevealedKeys((m) => ({ ...m, [row.id]: plain })))
+      .catch(() => toast("解密失败，密文可能来自其他主密码", "err"));
+  }
+
+  function copyKey(row: FormApiKey) {
+    if (!row.keyEnc) return;
+    decryptSecret(row.keyEnc)
+      .then((plain) => navigator.clipboard.writeText(plain))
+      .then(() => toast("API 密钥已复制"))
+      .catch(() => toast("解密失败，密文可能来自其他主密码", "err"));
+  }
+
   async function submit() {
     const next: typeof errors = {};
     const hasCredential = form.credKind !== "none";
@@ -207,21 +258,31 @@ export function AccountFormDialog({
     setErrors(next);
     if (Object.keys(next).length) return;
 
+    // 密码或新增 API 密钥要加密落盘——统一检查 vault 状态，解锁成功后续跑本函数
+    const newPlainKeys = form.apiKeys.filter((k) => k.plainKey.trim());
+    const needsEncrypt =
+      (form.credKind === "password" && !!form.credPassword) || newPlainKeys.length > 0;
+    if (needsEncrypt) {
+      if (vaultMeta == null) {
+        const msg = "需先设置主密码（设置 → 安全）";
+        setErrors({
+          ...next,
+          ...(form.credKind === "password" && form.credPassword ? { credPassword: msg } : {}),
+          ...(newPlainKeys.length ? { apiKeys: msg } : {}),
+        });
+        return;
+      }
+      if (!(await isVaultUnlocked())) {
+        pendingRef.current = () => void submit();
+        setShowUnlock(true);
+        return;
+      }
+    }
+
     let credential: Account["credential"];
     if (form.credKind === "password") {
       let passwordEnc = form.passwordEnc;
-      if (form.credPassword) {
-        if (vaultMeta == null) {
-          setErrors({ ...next, credPassword: "需先设置主密码（设置 → 安全）" });
-          return;
-        }
-        if (!(await isVaultUnlocked())) {
-          pendingRef.current = () => void submit();
-          setShowUnlock(true);
-          return;
-        }
-        passwordEnc = await encryptSecret(form.credPassword);
-      }
+      if (form.credPassword) passwordEnc = await encryptSecret(form.credPassword);
       credential = { kind: "password", username: form.credUsername.trim(), passwordEnc: passwordEnc! };
     } else if (form.credKind === "oauth") {
       credential = {
@@ -229,6 +290,27 @@ export function AccountFormDialog({
         provider: form.oauthProvider,
         identity: form.oauthIdentity.trim() || undefined,
       };
+    }
+
+    // API 密钥组装：新明文加密、已有密文原样保留、空行静默丢弃
+    const apiKeys: ApiKeyEntry[] = [];
+    for (const row of form.apiKeys) {
+      const plain = row.plainKey.trim();
+      if (plain) {
+        apiKeys.push({
+          id: row.id,
+          name: row.name.trim(),
+          keyEnc: await encryptSecret(plain),
+          createdAt: row.createdAt ?? Date.now(),
+        });
+      } else if (row.keyEnc) {
+        apiKeys.push({
+          id: row.id,
+          name: row.name.trim(),
+          keyEnc: row.keyEnc,
+          createdAt: row.createdAt ?? Date.now(),
+        });
+      }
     }
 
     const draft: AccountDraft = {
@@ -242,6 +324,7 @@ export function AccountFormDialog({
       username: form.username.trim() || undefined,
       faviconUrl: form.faviconUrl,
       credential,
+      apiKeys: apiKeys.length ? apiKeys : undefined,
       groupId: form.groupId || null,
       tagIds: form.tagIds,
       notes: form.notes.trim() || undefined,
@@ -432,6 +515,98 @@ export function AccountFormDialog({
               </Field>
             </div>
           )}
+        </div>
+
+        <div className="border-t border-line pt-3 sm:col-span-2">
+          <Field
+            label="API 密钥"
+            hint="站点生成的 sk- 令牌，以主密码加密存本地——卡片快捷复制与模型测试取用；首条视为主用"
+          >
+            <div className="space-y-2">
+              {form.apiKeys.map((row) => (
+                <div key={row.id}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-32 shrink-0">
+                      <Input
+                        value={row.name}
+                        onChange={(e) => setKeyRow(row.id, { name: e.target.value })}
+                        placeholder="备注（选填）"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <Input
+                        type="password"
+                        value={row.plainKey}
+                        onChange={(e) => setKeyRow(row.id, { plainKey: e.target.value })}
+                        placeholder={row.keyEnc ? "••••••（留空不改）" : "sk-…"}
+                        autoComplete="off"
+                      />
+                    </div>
+                    {row.keyEnc && (
+                      <>
+                        <Button
+                          size="sm"
+                          className="shrink-0"
+                          onClick={() =>
+                            revealedKeys[row.id]
+                              ? setRevealedKeys(({ [row.id]: _, ...rest }) => rest)
+                              : requireUnlock(() => revealKey(row))
+                          }
+                        >
+                          {revealedKeys[row.id] ? "隐藏" : "显示"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="shrink-0"
+                          onClick={() => requireUnlock(() => copyKey(row))}
+                        >
+                          复制
+                        </Button>
+                      </>
+                    )}
+                    <Button
+                      size="sm"
+                      className="shrink-0"
+                      title="删除该密钥"
+                      onClick={() => removeKeyRow(row.id)}
+                    >
+                      <X size={13} />
+                    </Button>
+                  </div>
+                  {revealedKeys[row.id] && (
+                    <p className="readout mt-1 break-all text-[11px] text-ink">
+                      {revealedKeys[row.id]}
+                    </p>
+                  )}
+                </div>
+              ))}
+              <div>
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    set({
+                      apiKeys: [
+                        ...form.apiKeys,
+                        { id: crypto.randomUUID(), name: "", plainKey: "" },
+                      ],
+                    })
+                  }
+                >
+                  + 添加密钥
+                </Button>
+              </div>
+              {errors.apiKeys && <span className="text-[11px] text-signal">{errors.apiKeys}</span>}
+              {vaultMeta === null && form.apiKeys.some((k) => !k.keyEnc) && (
+                <p className="text-[11px] text-amber">
+                  保存密钥前需先设置主密码——
+                  <button type="button" className="underline" onClick={openSecuritySettings}>
+                    去「安全」页设置
+                  </button>
+                </p>
+              )}
+            </div>
+          </Field>
         </div>
 
         <Field label="分组">

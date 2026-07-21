@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, ChevronRight, FlaskConical, X } from "lucide-react";
 import {
   fetchFirstApiKey,
   fetchSiteModels,
@@ -12,6 +13,7 @@ import {
 } from "@/api/modelTest";
 import { accountsItem, DEFAULT_TEST_MODELS, modelTestSettingsItem } from "@/storage/items";
 import { MODEL_TEST_SITE_TYPES, SITE_TYPE_LABELS, type Account } from "@/types";
+import { decryptSecret, isVaultUnlocked } from "@/vault/vault";
 import { Badge, Button, cn, EmptyState, Input, Select, SiteAvatar, Spinner, toast } from "@/ui/components";
 import { useStorageItem } from "@/ui/hooks";
 
@@ -153,10 +155,18 @@ export default function ModelTestPage() {
     toast(added ? `并入 ${added} 个站点模型（默认未勾选）` : "未发现新模型");
   }
 
-  /** 解析账号可用 key：优先手填 → 记忆的手填 → 自动拉；返回 null 时上层露出手填框 */
+  /** 解析账号可用 key：手填 → 账号已存密钥（解锁时取首条）→ 记忆的手填 → 自动拉；返回 null 时上层露出手填框 */
   async function resolveKey(account: Account): Promise<string | null> {
     const edited = manualKeyEdit[account.id]?.trim();
     if (edited) return edited;
+    // vault 锁着或解密失败都静默降级走后备——测试流不被解锁弹窗打断
+    if (account.apiKeys?.length && (await isVaultUnlocked())) {
+      try {
+        return await decryptSecret(account.apiKeys[0].keyEnc);
+      } catch {
+        // 脏密文，走后备
+      }
+    }
     const remembered = settings!.manualKeys[account.id]?.trim();
     if (remembered) return remembered;
     try {
@@ -298,7 +308,7 @@ export default function ModelTestPage() {
       </div>
 
       {testable.length === 0 ? (
-        <EmptyState icon="◎" text="没有可测试的账号——请先添加 New API 系账号并启用" />
+        <EmptyState icon={<FlaskConical size={24} />} text="没有可测试的账号——请先添加 New API 系账号并启用" />
       ) : (
         <>
           {/* 账号选择 */}
@@ -392,8 +402,8 @@ export default function ModelTestPage() {
                         <span className="text-[11px] text-ink-faint">
                           {onCount}/{group.models.length}
                         </span>
-                        <span className="ml-auto text-[11px] text-ink-faint">
-                          {isCollapsed ? "▸" : "▾"}
+                        <span className="ml-auto text-ink-faint">
+                          {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
                         </span>
                       </button>
                     </div>
@@ -477,7 +487,11 @@ export default function ModelTestPage() {
                           setManualKeyEdit((prev) => ({ ...prev, [account.id]: e.target.value }))
                         }
                         placeholder={
-                          settings.manualKeys[account.id] ? "已记忆——留空用自动/记忆值" : "留空则自动拉取"
+                          account.apiKeys?.length
+                            ? "已存密钥——解锁保险库后自动使用"
+                            : settings.manualKeys[account.id]
+                              ? "已记忆——留空用自动/记忆值"
+                              : "留空则自动拉取"
                         }
                         autoComplete="off"
                         className="w-full pr-12"
@@ -602,10 +616,16 @@ function ResultCell({ state }: { state?: CellState }) {
   return (
     <div className="min-w-[200px] max-w-[320px] space-y-1">
       {outcome.status === "ok" ? (
-        <Badge tone="phos">✓ {outcome.latencyMs}ms</Badge>
+        <Badge tone="phos">
+          <span className="inline-flex items-center gap-0.5">
+            <Check size={11} /> {outcome.latencyMs}ms
+          </span>
+        </Badge>
       ) : (
         <Badge tone={outcome.status === "rate_limited" ? "amber" : "signal"}>
-          ✗ {label[outcome.status]}
+          <span className="inline-flex items-center gap-0.5">
+            <X size={11} /> {label[outcome.status]}
+          </span>
         </Badge>
       )}
       {outcome.prompt && (
