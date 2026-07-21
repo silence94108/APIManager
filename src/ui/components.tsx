@@ -26,7 +26,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "rounded-md transition disabled:pointer-events-none disabled:opacity-40",
+        "inline-flex items-center justify-center gap-1 rounded-md transition disabled:pointer-events-none disabled:opacity-40",
         size === "sm" ? "px-2 py-1 text-[12px]" : "px-3 py-1.5 text-[13px]",
         BUTTON_VARIANTS[variant],
         className,
@@ -252,10 +252,10 @@ export function SiteAvatar({
   );
 }
 
-export function EmptyState({ icon, text, action }: { icon: string; text: string; action?: ReactNode }) {
+export function EmptyState({ icon, text, action }: { icon: ReactNode; text: string; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-line px-6 py-10 text-center">
-      <span className="readout text-2xl text-ink-faint">{icon}</span>
+      <span className="text-ink-faint">{icon}</span>
       <p className="text-[13px] text-ink-mute">{text}</p>
       {action}
     </div>

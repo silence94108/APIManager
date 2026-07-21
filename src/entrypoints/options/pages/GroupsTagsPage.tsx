@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, Pencil, Tags, X } from "lucide-react";
 import {
   deleteGroup,
   deleteTag,
@@ -27,7 +28,7 @@ export default function GroupsTagsPage() {
         <h1 className="readout mb-3 text-[15px] text-ink">分组 · {groups.length}</h1>
         <CreateRow placeholder="新分组名称" onCreate={async (name) => void (await saveGroup({ name }))} />
         {sortedGroups.length === 0 ? (
-          <EmptyState icon="▣" text="分组用于 popup 主列表的折叠展示，如「常用站 / 备用站」" />
+          <EmptyState icon={<Tags size={24} />} text="分组用于 popup 主列表的折叠展示，如「常用站 / 备用站」" />
         ) : (
           <ul className="mt-3 space-y-1.5">
             {sortedGroups.map((g, i) => (
@@ -56,7 +57,7 @@ export default function GroupsTagsPage() {
                         void reorderGroups(ids);
                       }}
                     >
-                      ↑
+                      <ArrowUp size={12} />
                     </Button>
                     <Button
                       size="sm"
@@ -67,7 +68,7 @@ export default function GroupsTagsPage() {
                         void reorderGroups(ids);
                       }}
                     >
-                      ↓
+                      <ArrowDown size={12} />
                     </Button>
                   </span>
                 }
@@ -187,10 +188,10 @@ function EditableRow({
           setEditing(true);
         }}
       >
-        ✎
+        <Pencil size={12} />
       </Button>
       <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>
-        ×
+        <X size={12} />
       </Button>
 
       <ConfirmDialog

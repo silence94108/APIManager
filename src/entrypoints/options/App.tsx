@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ArrowUpDown, Clock, FlaskConical, LayoutGrid, Shield, Tags } from "lucide-react";
 import { cn, ToastHost } from "@/ui/components";
 import AccountsPage from "./pages/AccountsPage";
 import CheckinPage from "./pages/CheckinPage";
@@ -8,12 +9,12 @@ import ModelTestPage from "./pages/ModelTestPage";
 import SecurityPage from "./pages/SecurityPage";
 
 const NAV = [
-  { key: "accounts", icon: "▦", label: "账号", page: AccountsPage },
-  { key: "groups", icon: "▣", label: "分组与标签", page: GroupsTagsPage },
-  { key: "checkin", icon: "◔", label: "自动签到", page: CheckinPage },
-  { key: "modeltest", icon: "◎", label: "模型测试", page: ModelTestPage },
-  { key: "security", icon: "◈", label: "安全", page: SecurityPage },
-  { key: "data", icon: "⇅", label: "数据", page: ImportExportPage },
+  { key: "accounts", icon: LayoutGrid, label: "账号", page: AccountsPage },
+  { key: "groups", icon: Tags, label: "分组与标签", page: GroupsTagsPage },
+  { key: "checkin", icon: Clock, label: "自动签到", page: CheckinPage },
+  { key: "modeltest", icon: FlaskConical, label: "模型测试", page: ModelTestPage },
+  { key: "security", icon: Shield, label: "安全", page: SecurityPage },
+  { key: "data", icon: ArrowUpDown, label: "数据", page: ImportExportPage },
 ] as const;
 
 type NavKey = (typeof NAV)[number]["key"];
@@ -61,7 +62,7 @@ export default function App() {
               {active === item.key && (
                 <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-phos" />
               )}
-              <span className="readout text-[12px]">{item.icon}</span>
+              <item.icon size={14} className="shrink-0" />
               {item.label}
             </button>
           ))}

@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/ui/components";
 import { formatUsd } from "@/utils/quota";
 
@@ -25,14 +26,13 @@ export default function GroupSection({
         onClick={() => onToggle(!collapsed)}
         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-raised/60"
       >
-        <span
+        <ChevronRight
+          size={12}
           className={cn(
-            "readout inline-block text-[10px] text-ink-faint transition-transform",
+            "shrink-0 text-ink-faint transition-transform",
             !collapsed && "rotate-90",
           )}
-        >
-          ▶
-        </span>
+        />
         <span className="flex-1 truncate text-[12px] font-medium text-ink-mute">
           {title}
           <span className="ml-1.5 text-[11px] text-ink-faint">{count}</span>

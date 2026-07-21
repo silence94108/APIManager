@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@webext-core/messaging": "^3.0.1",
+    "lucide-react": "^1.25.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

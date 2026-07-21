@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { ArrowUpRight, Check, Hand, RotateCcw, TriangleAlert, X, Zap } from "lucide-react";
 import { formatRunSummary, resolveCheckinPageUrl } from "@/checkin/helpers";
 import { sendMessage } from "@/messaging/protocol";
 import {
@@ -193,7 +194,7 @@ export default function CheckinPage() {
         <div className="mb-3 flex items-center justify-between">
           <h2 className="readout text-[14px] text-ink">运行状态</h2>
           <Button variant="phos" disabled={running} onClick={runNow}>
-            {running ? <Spinner /> : "⚡ 立即全部签到"}
+            {running ? <Spinner /> : <><Zap size={13} /> 立即全部签到</>}
           </Button>
         </div>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-[13px]">
@@ -212,9 +213,22 @@ export default function CheckinPage() {
           <div className="flex justify-between">
             <dt className="text-ink-faint">上次结果</dt>
             <dd className="readout text-ink">
-              {schedulerState?.lastRun
-                ? `✓${schedulerState.lastRun.summary.success} ·${schedulerState.lastRun.summary.already} ✗${schedulerState.lastRun.summary.failed}${schedulerState.lastRun.summary.needsVerify > 0 ? ` ⚠${schedulerState.lastRun.summary.needsVerify}` : ""}`
-                : "—"}
+              {schedulerState?.lastRun ? (
+                <span className="inline-flex items-center gap-1">
+                  <Check size={11} />
+                  {schedulerState.lastRun.summary.success} ·{schedulerState.lastRun.summary.already}{" "}
+                  <X size={11} />
+                  {schedulerState.lastRun.summary.failed}
+                  {schedulerState.lastRun.summary.needsVerify > 0 && (
+                    <>
+                      <TriangleAlert size={11} />
+                      {schedulerState.lastRun.summary.needsVerify}
+                    </>
+                  )}
+                </span>
+              ) : (
+                "—"
+              )}
             </dd>
           </div>
         </dl>
@@ -244,8 +258,8 @@ export default function CheckinPage() {
         {todayRows.length === 0 ? (
           <p className="text-[13px] text-ink-faint">今天还没有签到记录</p>
         ) : visibleRows.length === 0 ? (
-          <p className="text-[13px] text-ink-faint">
-            {filter === "failed" ? "没有失败记录 ✓" : "没有待验证记录 ✓"}
+          <p className="inline-flex items-center gap-1 text-[13px] text-ink-faint">
+            {filter === "failed" ? "没有失败记录" : "没有待验证记录"} <Check size={12} />
           </p>
         ) : (
           <ul className="space-y-1.5">
@@ -269,20 +283,20 @@ export default function CheckinPage() {
                       disabled={retryingId !== null}
                       onClick={() => void retryOne(account.id, account.name)}
                     >
-                      {retryingId === account.id ? <Spinner /> : "↯ 重试"}
+                      {retryingId === account.id ? <Spinner /> : <><RotateCcw size={12} /> 重试</>}
                     </Button>
                     <Button
                       size="sm"
                       onClick={() => window.open(resolveCheckinPageUrl(account))}
                       title="打开站点签到页手动签"
                     >
-                      ✋ 手动签到
+                      <Hand size={12} /> 手动签到
                     </Button>
                   </>
                 )}
                 {record!.status === "needs_verification" && (
                   <Button size="sm" onClick={() => window.open(resolveCheckinPageUrl(account))}>
-                    ↗ 去签到页
+                    <ArrowUpRight size={12} /> 去签到页
                   </Button>
                 )}
               </li>
