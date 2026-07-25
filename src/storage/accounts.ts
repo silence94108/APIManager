@@ -1,5 +1,5 @@
 import type { Account } from "@/types";
-import { accountsItem } from "./items";
+import { accountsItem, checkinResultsItem, modelTestSettingsItem } from "./items";
 
 export type AccountDraft = Omit<Account, "id" | "createdAt" | "updatedAt"> & {
   id?: string;
@@ -43,7 +43,20 @@ export async function patchAccount(
   return updated;
 }
 
+/** 删除账号并连带清理孤儿数据：签到记录、模型测试记忆的手填 key */
 export async function deleteAccount(id: string): Promise<void> {
   const accounts = await accountsItem.getValue();
   await accountsItem.setValue(accounts.filter((a) => a.id !== id));
+
+  const results = await checkinResultsItem.getValue();
+  if (id in results) {
+    const { [id]: _dropped, ...rest } = results;
+    await checkinResultsItem.setValue(rest);
+  }
+
+  const testSettings = await modelTestSettingsItem.getValue();
+  if (id in testSettings.manualKeys) {
+    const { [id]: _droppedKey, ...restKeys } = testSettings.manualKeys;
+    await modelTestSettingsItem.setValue({ ...testSettings, manualKeys: restKeys });
+  }
 }

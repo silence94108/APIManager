@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import type { AccountDraft } from "../accounts";
-import { accountsItem, groupsItem, tagsItem } from "../items";
+import { accountsItem, checkinResultsItem, groupsItem, modelTestSettingsItem, tagsItem } from "../items";
 import { deleteAccount, patchAccount, saveAccount } from "../accounts";
 import {
   deleteGroup,
@@ -51,6 +51,25 @@ describe("accounts CRUD", () => {
     expect(all).toHaveLength(1);
     expect(all[0].name).toBe("更新版");
     expect(all[0].createdAt).toBe(created.createdAt);
+  });
+
+  it("删除账号连带清理签到记录与手填 key，其他账号的不受影响", async () => {
+    const a = await saveAccount(draft());
+    const b = await saveAccount(draft({ name: "另一站", url: "https://b.example.com" }));
+    await checkinResultsItem.setValue({
+      [a.id]: { date: "2026-07-25", status: "success", at: 1 },
+      [b.id]: { date: "2026-07-25", status: "failed", at: 2 },
+    });
+    const settings = await modelTestSettingsItem.getValue();
+    await modelTestSettingsItem.setValue({
+      ...settings,
+      manualKeys: { [a.id]: "sk-a", [b.id]: "sk-b" },
+    });
+
+    await deleteAccount(a.id);
+
+    expect(Object.keys(await checkinResultsItem.getValue())).toEqual([b.id]);
+    expect((await modelTestSettingsItem.getValue()).manualKeys).toEqual({ [b.id]: "sk-b" });
   });
 });
 
