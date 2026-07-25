@@ -3,6 +3,7 @@ import type {
   Account,
   CheckinResults,
   CheckinSettings,
+  EncryptedBlob,
   Group,
   SchedulerState,
   Tag,
@@ -85,8 +86,10 @@ export interface ModelTestSettings {
   models: string[];
   /** 勾选待测的模型子集；缺省（老数据）视为只勾选 DEFAULT_TEST_MODELS */
   selected?: string[];
-  /** 按 accountId 记忆的手填 API Key（自动拉取失败时用户补的） */
+  /** @deprecated 明文手填 key——已改 vault 加密存 manualKeysEnc，此字段仅迁移期读取，解锁后自动搬迁清空 */
   manualKeys: Record<string, string>;
+  /** 按 accountId 记忆的手填 API Key（vault 加密；未设 vault 时不持久化） */
+  manualKeysEnc?: Record<string, EncryptedBlob>;
   /** 测试节奏档位——请求间的拟人停顿区间，防止零间隔连发被风控识别为脚本 */
   pacing: "fast" | "normal" | "safe";
 }

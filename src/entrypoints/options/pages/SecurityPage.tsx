@@ -281,7 +281,10 @@ function ResetCard({ passwordCount, apiKeyCount }: { passwordCount: number; apiK
         onConfirm={async () => {
           const stripped = await resetVault();
           setConfirming(false);
-          toast(`保险库已重置，删除了 ${stripped.passwords} 个已存密码、${stripped.apiKeys} 条 API 密钥`);
+          toast(
+            `保险库已重置，删除了 ${stripped.passwords} 个已存密码、${stripped.apiKeys} 条 API 密钥` +
+              (stripped.manualKeys ? `、${stripped.manualKeys} 条测试页记忆 key` : ""),
+          );
         }}
       />
     </section>

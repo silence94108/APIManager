@@ -1,4 +1,4 @@
-import { accountsItem, vaultKeyItem, vaultMetaItem } from "@/storage/items";
+import { accountsItem, modelTestSettingsItem, vaultKeyItem, vaultMetaItem } from "@/storage/items";
 import type { ApiKeyEntry, EncryptedBlob } from "@/types";
 import {
   decryptString,
@@ -122,6 +122,22 @@ export async function changeVaultPassword(
     }),
   );
   await accountsItem.setValue(reEncrypted);
+
+  // 模型测试记忆的手填 key 同轨重加密，脏密文条目丢弃
+  const testSettings = await modelTestSettingsItem.getValue();
+  if (testSettings.manualKeysEnc && Object.keys(testSettings.manualKeysEnc).length) {
+    const keptEnc: Record<string, EncryptedBlob> = {};
+    for (const [id, blob] of Object.entries(testSettings.manualKeysEnc)) {
+      try {
+        const plain = await decryptString(oldKey, blob);
+        keptEnc[id] = await encryptString(newKey, plain);
+      } catch {
+        // 脏密文条目丢弃
+      }
+    }
+    await modelTestSettingsItem.setValue({ ...testSettings, manualKeysEnc: keptEnc });
+  }
+
   await vaultMetaItem.setValue({
     salt: toB64(salt),
     verifier: await encryptString(newKey, VERIFIER_PLAINTEXT),
@@ -131,8 +147,12 @@ export async function changeVaultPassword(
   return true;
 }
 
-/** 忘记主密码的兜底：清空 vault 并删除所有账密凭证与 API 密钥（OAuth 记录保留），返回删除数 */
-export async function resetVault(): Promise<{ passwords: number; apiKeys: number }> {
+/** 忘记主密码的兜底：清空 vault 并删除所有账密凭证与 API 密钥（OAuth 记录保留）、模型测试记忆的手填 key，返回删除数 */
+export async function resetVault(): Promise<{
+  passwords: number;
+  apiKeys: number;
+  manualKeys: number;
+}> {
   const accounts = await accountsItem.getValue();
   const passwords = accounts.filter((a) => a.credential?.kind === "password").length;
   const apiKeys = accounts.reduce((n, a) => n + (a.apiKeys?.length ?? 0), 0);
@@ -149,7 +169,12 @@ export async function resetVault(): Promise<{ passwords: number; apiKeys: number
       ),
     );
   }
+  const testSettings = await modelTestSettingsItem.getValue();
+  const manualKeys = Object.keys(testSettings.manualKeysEnc ?? {}).length;
+  if (manualKeys) {
+    await modelTestSettingsItem.setValue({ ...testSettings, manualKeysEnc: {} });
+  }
   await vaultMetaItem.setValue(null);
   await vaultKeyItem.setValue(null);
-  return { passwords, apiKeys };
+  return { passwords, apiKeys, manualKeys };
 }

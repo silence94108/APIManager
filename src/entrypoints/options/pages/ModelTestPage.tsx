@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronRight, FlaskConical, X } from "lucide-react";
 import {
   fetchFirstApiKey,
@@ -13,7 +13,7 @@ import {
 } from "@/api/modelTest";
 import { accountsItem, DEFAULT_TEST_MODELS, groupsItem, modelTestSettingsItem } from "@/storage/items";
 import { MODEL_TEST_SITE_TYPES, SITE_TYPE_LABELS, type Account } from "@/types";
-import { decryptSecret, isVaultUnlocked } from "@/vault/vault";
+import { decryptSecret, encryptSecret, isVaultUnlocked } from "@/vault/vault";
 import { Badge, Button, cn, EmptyState, Input, Select, SiteAvatar, Spinner, toast } from "@/ui/components";
 import { useStorageItem } from "@/ui/hooks";
 
@@ -52,6 +52,20 @@ export default function ModelTestPage() {
   const [waitSec, setWaitSec] = useState(0);
   /** 取消整轮测试的信号 */
   const abortRef = useRef<AbortController | null>(null);
+
+  // 明文遗留搬迁：老版本 manualKeys 明文落盘，解锁态下逐条加密搬入 manualKeysEnc 并清空明文。
+  // 锁着则先不动（明文继续兜底可读），下次解锁进本页再搬
+  useEffect(() => {
+    if (!settings || !Object.keys(settings.manualKeys).length) return;
+    void (async () => {
+      if (!(await isVaultUnlocked())) return;
+      const enc = { ...(settings.manualKeysEnc ?? {}) };
+      for (const [id, plain] of Object.entries(settings.manualKeys)) {
+        if (plain.trim()) enc[id] = await encryptSecret(plain);
+      }
+      await modelTestSettingsItem.setValue({ ...settings, manualKeys: {}, manualKeysEnc: enc });
+    })();
+  }, [settings]);
 
   const testable = useMemo(
     () =>
@@ -180,18 +194,28 @@ export default function ModelTestPage() {
     toast(added ? `并入 ${added} 个站点模型（默认未勾选）` : "未发现新模型");
   }
 
-  /** 解析账号可用 key：手填 → 账号已存密钥（解锁时取首条）→ 记忆的手填 → 自动拉；返回 null 时上层露出手填框 */
+  /** 解析账号可用 key：手填 → 账号已存密钥（解锁时取首条）→ 记忆的手填（密文，锁着跳过；明文遗留兜底）→ 自动拉；返回 null 时上层露出手填框 */
   async function resolveKey(account: Account): Promise<string | null> {
     const edited = manualKeyEdit[account.id]?.trim();
     if (edited) return edited;
     // vault 锁着或解密失败都静默降级走后备——测试流不被解锁弹窗打断
-    if (account.apiKeys?.length && (await isVaultUnlocked())) {
+    const unlocked = await isVaultUnlocked();
+    if (account.apiKeys?.length && unlocked) {
       try {
         return await decryptSecret(account.apiKeys[0].keyEnc);
       } catch {
         // 脏密文，走后备
       }
     }
+    const rememberedEnc = settings!.manualKeysEnc?.[account.id];
+    if (rememberedEnc && unlocked) {
+      try {
+        return await decryptSecret(rememberedEnc);
+      } catch {
+        // 脏密文（异库导入残留），走后备
+      }
+    }
+    // 迁移期兜底：未解锁时搬迁尚未发生，明文遗留仍可用
     const remembered = settings!.manualKeys[account.id]?.trim();
     if (remembered) return remembered;
     try {
@@ -336,11 +360,13 @@ export default function ModelTestPage() {
           setResults((prev) => ({ ...prev, [ck]: { phase: "done", outcome } }));
         }
       }
-      if (Object.keys(savedManual).length) {
-        await modelTestSettingsItem.setValue({
-          ...settings!,
-          manualKeys: { ...settings!.manualKeys, ...savedManual },
-        });
+      // 记忆手填 key：解锁态加密落盘；锁着/未设 vault 不写（静默，测试流不被解锁打断），仅当次会话可用
+      if (Object.keys(savedManual).length && (await isVaultUnlocked())) {
+        const enc = { ...(settings!.manualKeysEnc ?? {}) };
+        for (const [id, plain] of Object.entries(savedManual)) {
+          enc[id] = await encryptSecret(plain);
+        }
+        await modelTestSettingsItem.setValue({ ...settings!, manualKeysEnc: enc });
       }
     } finally {
       setRunning(false);
@@ -596,8 +622,8 @@ export default function ModelTestPage() {
                           placeholder={
                             account.apiKeys?.length
                               ? "已存密钥——解锁保险库后自动使用"
-                              : settings.manualKeys[account.id]
-                                ? "已记忆——留空用自动/记忆值"
+                              : settings.manualKeysEnc?.[account.id] || settings.manualKeys[account.id]
+                                ? "已记忆（加密）——解锁后留空即用"
                                 : "留空则自动拉取"
                           }
                           autoComplete="off"

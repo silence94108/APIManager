@@ -55,8 +55,13 @@ export async function deleteAccount(id: string): Promise<void> {
   }
 
   const testSettings = await modelTestSettingsItem.getValue();
-  if (id in testSettings.manualKeys) {
+  if (id in testSettings.manualKeys || id in (testSettings.manualKeysEnc ?? {})) {
     const { [id]: _droppedKey, ...restKeys } = testSettings.manualKeys;
-    await modelTestSettingsItem.setValue({ ...testSettings, manualKeys: restKeys });
+    const { [id]: _droppedEnc, ...restEnc } = testSettings.manualKeysEnc ?? {};
+    await modelTestSettingsItem.setValue({
+      ...testSettings,
+      manualKeys: restKeys,
+      manualKeysEnc: restEnc,
+    });
   }
 }

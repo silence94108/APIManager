@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import { saveAccount, type AccountDraft } from "@/storage/accounts";
-import { accountsItem, vaultKeyItem, vaultMetaItem } from "@/storage/items";
+import { accountsItem, modelTestSettingsItem, vaultKeyItem, vaultMetaItem } from "@/storage/items";
 import {
   changeVaultPassword,
   decryptSecret,
@@ -105,6 +105,23 @@ describe("changeVaultPassword", () => {
     expect(updated.apiKeys!.map((k) => k.id)).toEqual(["good"]);
     expect(await decryptSecret(updated.apiKeys![0].keyEnc)).toBe("sk-good");
   });
+
+  it("测试页记忆的手填 key 同轨重加密，脏密文条目剔除", async () => {
+    await setupVault("old-master");
+    const base = await modelTestSettingsItem.getValue();
+    await modelTestSettingsItem.setValue({
+      ...base,
+      manualKeysEnc: {
+        "acc-good": await encryptSecret("sk-manual"),
+        "acc-dirty": { iv: "AAAA", ciphertext: "BBBB" },
+      },
+    });
+
+    expect(await changeVaultPassword("old-master", "new-master-pw")).toBe(true);
+    const after = (await modelTestSettingsItem.getValue()).manualKeysEnc!;
+    expect(Object.keys(after)).toEqual(["acc-good"]);
+    expect(await decryptSecret(after["acc-good"])).toBe("sk-manual");
+  });
 });
 
 describe("resetVault", () => {
@@ -123,10 +140,16 @@ describe("resetVault", () => {
     await saveAccount(
       draft({ name: "oauth站", credential: { kind: "oauth", provider: "linuxdo" } }),
     );
+    const base = await modelTestSettingsItem.getValue();
+    await modelTestSettingsItem.setValue({
+      ...base,
+      manualKeysEnc: { "acc-1": await encryptSecret("sk-manual") },
+    });
 
-    expect(await resetVault()).toEqual({ passwords: 1, apiKeys: 2 });
+    expect(await resetVault()).toEqual({ passwords: 1, apiKeys: 2, manualKeys: 1 });
     expect(await vaultMetaItem.getValue()).toBeNull();
     expect(await vaultKeyItem.getValue()).toBeNull();
+    expect((await modelTestSettingsItem.getValue()).manualKeysEnc).toEqual({});
 
     const all = await accountsItem.getValue();
     expect(all.find((a) => a.name === "pw站")!.credential).toBeUndefined();
