@@ -3,8 +3,9 @@ import { ArrowUpRight, ChevronRight, Hand, KeyRound, LayoutGrid } from "lucide-r
 import { canCheckin, resolveCheckinPageUrl } from "@/checkin/helpers";
 import { deleteAccount } from "@/storage/accounts";
 import { setGroupCollapsed } from "@/storage/groupsTags";
-import { accountsItem, groupsItem, tagsItem } from "@/storage/items";
+import { accountsItem, checkinResultsItem, groupsItem, tagsItem } from "@/storage/items";
 import { SITE_TYPE_LABELS, OAUTH_PROVIDER_LABELS, type Account, type Group } from "@/types";
+import { localDayString } from "@/utils/day";
 import { formatUsageLine, formatUsd, sumBalanceUsd } from "@/utils/quota";
 import {
   AccountFormDialog,
@@ -40,6 +41,8 @@ export default function AccountsPage() {
   const accounts = useStorageItem(accountsItem);
   const groups = useStorageItem(groupsItem);
   const tags = useStorageItem(tagsItem);
+  const results = useStorageItem(checkinResultsItem);
+  const today = localDayString();
 
   const [editing, setEditing] = useState<FormState | null>(null);
   const [deleting, setDeleting] = useState<Account | null>(null);
@@ -142,7 +145,7 @@ export default function AccountsPage() {
           >
             <ArrowUpRight size={14} />
           </button>
-          <StatusDot status={dotStatus(account)} />
+          <StatusDot status={dotStatus(account, results, today)} />
         </div>
 
         {/* 徽章行：类型 + 过期 + 凭证 */}
