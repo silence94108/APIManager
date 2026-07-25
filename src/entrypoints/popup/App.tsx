@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Clock, LayoutGrid, RefreshCw, ScanSearch, Settings, Zap } from "lucide-react";
+import { Clock, LayoutGrid, RefreshCw, ScanSearch, Search, Settings, TriangleAlert, Zap } from "lucide-react";
 import { formatRunSummary } from "@/checkin/helpers";
 import { detectCurrentSite } from "@/detect/detectCurrentSite";
 import { sendMessage } from "@/messaging/protocol";
@@ -41,6 +41,7 @@ export default function App() {
   const schedulerState = useStorageItem(schedulerStateItem);
 
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [keyword, setKeyword] = useState("");
   const [ungroupedCollapsed, setUngroupedCollapsed] = useState(false);
   const [busyAll, setBusyAll] = useState<"checkin" | "refresh" | "detect" | null>(null);
   const [formState, setFormState] = useState<FormState | null>(null); // 识别与编辑共用同一个表单弹窗
@@ -58,10 +59,19 @@ export default function App() {
 
   const sections = useMemo<Section[]>(() => {
     if (!accounts || !groups) return [];
-    const filtered =
+    const byTag =
       selectedTagIds.length === 0
         ? accounts
         : accounts.filter((a) => selectedTagIds.some((t) => a.tagIds.includes(t)));
+    const kw = keyword.trim().toLowerCase();
+    const filtered = kw
+      ? byTag.filter(
+          (a) =>
+            a.name.toLowerCase().includes(kw) ||
+            (a.username?.toLowerCase().includes(kw) ?? false) ||
+            a.url.toLowerCase().includes(kw),
+        )
+      : byTag;
 
     const grouped: Section[] = [...groups]
       .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -78,9 +88,9 @@ export default function App() {
         balance: sumBalanceUsd(ungrouped),
       });
     }
-    const filtering = selectedTagIds.length > 0;
+    const filtering = selectedTagIds.length > 0 || kw.length > 0;
     return grouped.filter((s) => !filtering || s.accounts.length > 0);
-  }, [accounts, groups, selectedTagIds]);
+  }, [accounts, groups, selectedTagIds, keyword]);
 
   if (!accounts || !groups || !tags) {
     return <div className="w-[380px] p-6" />;
@@ -142,6 +152,9 @@ export default function App() {
   }
 
   const nextDaily = schedulerState?.nextDailyAt;
+  // 上次签到有失败/待验证时，footer 的 wordmark 换成警示 chip
+  const lastRun = schedulerState?.lastRun;
+  const lastFailed = lastRun ? lastRun.summary.failed + lastRun.summary.needsVerify : 0;
 
   return (
     <div
@@ -211,6 +224,27 @@ export default function App() {
         )}
       </header>
 
+      {/* 名称/URL 搜索——账号少时没有搜索价值，不占 popup 纵向空间 */}
+      {accounts.length > 5 && (
+        <div className="flex items-center gap-1.5 border-b border-line px-4 py-1.5">
+          <Search size={12} className="shrink-0 text-ink-faint" />
+          <input
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="搜索名称 / 用户名 / 网址"
+            className="w-full bg-transparent text-[12px] text-ink outline-none placeholder:text-ink-faint"
+          />
+          {keyword && (
+            <button
+              onClick={() => setKeyword("")}
+              className="shrink-0 text-[11px] text-ink-faint hover:text-ink"
+            >
+              清除
+            </button>
+          )}
+        </div>
+      )}
+
       <TagFilterBar tags={tags} selected={selectedTagIds} onChange={setSelectedTagIds} />
 
       <main className="flex-1 overflow-y-auto px-2 py-2">
@@ -226,6 +260,8 @@ export default function App() {
               }
             />
           </div>
+        ) : sections.length === 0 ? (
+          <p className="px-4 py-6 text-center text-[12px] text-ink-faint">没有匹配的账号</p>
         ) : (
           sections.map((section, i) => (
             <GroupSection
@@ -259,9 +295,28 @@ export default function App() {
       </main>
 
       <footer className="flex items-center justify-between border-t border-line px-4 py-2">
-        <span className="readout text-[10px] uppercase tracking-[0.16em] text-ink-faint">
-          APIManager
-        </span>
+        {lastFailed > 0 ? (
+          <button
+            title={`上次签到 ${formatRunSummary(lastRun!.summary)}——点击去签到页查看`}
+            onClick={() =>
+              void browser.tabs.create({ url: browser.runtime.getURL("/options.html#checkin") })
+            }
+            className={cn(
+              "inline-flex items-center gap-1 rounded border px-1.5 py-px text-[11px] transition hover:bg-carbon",
+              lastRun!.summary.failed > 0
+                ? "border-signal/40 text-signal"
+                : "border-amber/40 text-amber",
+            )}
+          >
+            <TriangleAlert size={11} />
+            上次签到 {lastRun!.summary.failed > 0 ? `失败 ${lastRun!.summary.failed}` : ""}
+            {lastRun!.summary.needsVerify > 0 ? ` 待验证 ${lastRun!.summary.needsVerify}` : ""}
+          </button>
+        ) : (
+          <span className="readout text-[10px] uppercase tracking-[0.16em] text-ink-faint">
+            APIManager
+          </span>
+        )}
         <span
           className={cn(
             "inline-flex items-center gap-1 text-[11px]",
