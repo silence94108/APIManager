@@ -1,12 +1,24 @@
 import {
   accountsItem,
+  checkinResultsItem,
   checkinSettingsItem,
   groupsItem,
+  modelTestSettingsItem,
   tagsItem,
+  uiSettingsItem,
   vaultKeyItem,
   vaultMetaItem,
+  type ModelTestSettings,
+  type UiSettings,
 } from "@/storage/items";
-import type { Account, CheckinSettings, Group, Tag, VaultMeta } from "@/types";
+import type {
+  Account,
+  CheckinResults,
+  CheckinSettings,
+  Group,
+  Tag,
+  VaultMeta,
+} from "@/types";
 
 export interface OwnBackup {
   app: "api-manager";
@@ -18,16 +30,26 @@ export interface OwnBackup {
   checkinSettings: CheckinSettings;
   /** vault 元数据——密文凭证要在别处恢复必须带盐（配同一主密码解锁） */
   vault?: VaultMeta | null;
+  /** 签到记录——恢复"今日已签"状态，避免换设备当天重复签 */
+  checkinResults?: CheckinResults;
+  /** 模型测试配置（manualKeysEnc 为密文，异库导入会剥离） */
+  modelTestSettings?: ModelTestSettings;
+  /** 界面偏好（缩放档位等）——merge 视为设备偏好不导入 */
+  uiSettings?: UiSettings;
 }
 
 export async function exportOwnBackup(): Promise<OwnBackup> {
-  const [accounts, groups, tags, checkinSettings, vault] = await Promise.all([
-    accountsItem.getValue(),
-    groupsItem.getValue(),
-    tagsItem.getValue(),
-    checkinSettingsItem.getValue(),
-    vaultMetaItem.getValue(),
-  ]);
+  const [accounts, groups, tags, checkinSettings, vault, checkinResults, modelTestSettings, uiSettings] =
+    await Promise.all([
+      accountsItem.getValue(),
+      groupsItem.getValue(),
+      tagsItem.getValue(),
+      checkinSettingsItem.getValue(),
+      vaultMetaItem.getValue(),
+      checkinResultsItem.getValue(),
+      modelTestSettingsItem.getValue(),
+      uiSettingsItem.getValue(),
+    ]);
   return {
     app: "api-manager",
     version: 1,
@@ -37,6 +59,9 @@ export async function exportOwnBackup(): Promise<OwnBackup> {
     tags,
     checkinSettings,
     vault,
+    checkinResults,
+    modelTestSettings,
+    uiSettings,
   };
 }
 
@@ -81,6 +106,11 @@ export async function importOwnBackup(
       groupsItem.setValue(groups),
       tagsItem.setValue(tags),
       ...(backup.checkinSettings ? [checkinSettingsItem.setValue(backup.checkinSettings)] : []),
+      ...(backup.checkinResults ? [checkinResultsItem.setValue(backup.checkinResults)] : []),
+      ...(backup.modelTestSettings
+        ? [modelTestSettingsItem.setValue(backup.modelTestSettings)]
+        : []),
+      ...(backup.uiSettings ? [uiSettingsItem.setValue(backup.uiSettings)] : []),
     ]);
     if (backup.vault !== undefined) await adoptVault(backup.vault);
     return {
@@ -131,10 +161,23 @@ export async function importOwnBackup(
   const tagIds = new Set(curTags.map((t) => t.id));
   const newTags = tags.filter((t) => !tagIds.has(t.id));
 
+  // 签到记录按账号 at 新者胜合并；modelTestSettings / uiSettings 属设备偏好，merge 不导入（本地胜）
+  const incomingResults = backup.checkinResults ?? {};
+  let mergedResults: CheckinResults | null = null;
+  if (Object.keys(incomingResults).length) {
+    const curResults = await checkinResultsItem.getValue();
+    mergedResults = { ...curResults };
+    for (const [accId, record] of Object.entries(incomingResults)) {
+      const cur = mergedResults[accId];
+      if (!cur || record.at > cur.at) mergedResults[accId] = record;
+    }
+  }
+
   await Promise.all([
     accountsItem.setValue([...accountById.values()]),
     newGroups.length ? groupsItem.setValue([...curGroups, ...newGroups]) : Promise.resolve(),
     newTags.length ? tagsItem.setValue([...curTags, ...newTags]) : Promise.resolve(),
+    mergedResults ? checkinResultsItem.setValue(mergedResults) : Promise.resolve(),
   ]);
 
   return {

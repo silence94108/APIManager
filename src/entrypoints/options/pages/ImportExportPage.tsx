@@ -162,7 +162,7 @@ function OwnBackupCard() {
     <section className="rounded-lg border border-line bg-panel p-4">
       <h2 className="readout mb-1 text-[14px] text-ink">APIManager 自身备份</h2>
       <p className="mb-3 text-[12px] text-ink-faint">
-        备份包含账号（含 Token、加密后的登录密码与 API 密钥）、分组、标签与签到设置——Token 为明文，请妥善保管；密码与密钥为密文，恢复后需用同一主密码解锁。
+        备份包含账号（含 Token、加密后的登录密码与 API 密钥）、分组、标签、签到设置与记录、模型测试配置、界面偏好——Token 为明文，请妥善保管；密码与密钥为密文，恢复后需用同一主密码解锁。合并导入时模型测试配置与界面偏好视为设备偏好，不覆盖本地。
       </p>
 
       {picker.input}
