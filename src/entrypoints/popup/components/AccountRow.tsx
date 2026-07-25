@@ -13,7 +13,7 @@ import { canCheckin, resolveCheckinPageUrl } from "@/checkin/helpers";
 import { sendMessage } from "@/messaging/protocol";
 import { checkinResultsItem } from "@/storage/items";
 import { BALANCE_SITE_TYPES, type Account, type CheckinResults } from "@/types";
-import { formatUsd } from "@/utils/quota";
+import { formatUsageLine, formatUsd } from "@/utils/quota";
 import { cn, dotStatus, SiteAvatar, Spinner, StatusDot, toast } from "@/ui/components";
 
 export default function AccountRow({
@@ -35,6 +35,7 @@ export default function AccountRow({
   const status = dotStatus(account, results, today);
   const eligible = canCheckin(account);
   const hasBalance = BALANCE_SITE_TYPES.includes(account.siteType);
+  const usageLine = formatUsageLine(account);
 
   async function checkin() {
     setBusy("checkin");
@@ -157,16 +158,12 @@ export default function AccountRow({
           <span className="readout text-[13px] text-ink-mute">
             {account.balance ? formatUsd(account.balance.usd) : "—"}
           </span>
-          {/* 行高有限只显一个口径：今日消耗优先（更常看），站点拿不到今日再退累计 */}
-          {account.usage?.todayUsd !== undefined ? (
-            <span className="readout text-[9px] leading-tight text-ink-faint">
-              今日 {formatUsd(account.usage.todayUsd)}
+          {/* 今日 · 累计 双口径，与设置页统一；某口径拉不到补「—」 */}
+          {usageLine && (
+            <span className="readout whitespace-nowrap text-[9px] leading-tight text-ink-faint">
+              {usageLine}
             </span>
-          ) : account.usage?.totalUsd !== undefined ? (
-            <span className="readout text-[9px] leading-tight text-ink-faint">
-              累计 {formatUsd(account.usage.totalUsd)}
-            </span>
-          ) : null}
+          )}
         </span>
       </div>
     </div>

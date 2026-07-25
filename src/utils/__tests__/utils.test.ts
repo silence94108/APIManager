@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { Account, SiteType } from "@/types";
 import { localDayString, localMonthString } from "../day";
-import { formatUsd, quotaToUsd } from "../quota";
+import { formatUsageLine, formatUsd, quotaToUsd } from "../quota";
 import { isValidSiteUrl, normalizeOrigin } from "../url";
 
 describe("day", () => {
@@ -40,5 +41,35 @@ describe("quota", () => {
   it("formatUsd 千分位 + 两位小数", () => {
     expect(formatUsd(1234.5)).toBe("$1,234.50");
     expect(formatUsd(0)).toBe("$0.00");
+  });
+});
+
+describe("formatUsageLine", () => {
+  const acc = (siteType: SiteType, usage?: Account["usage"]) => ({ siteType, usage }) as Account;
+
+  it("余额站两口径齐 → 今日 · 累计", () => {
+    expect(
+      formatUsageLine(acc("new-api", { todayUsd: 0.56, totalUsd: 8.9, updatedAt: 1 })),
+    ).toBe("今日 $0.56 · 累计 $8.90");
+  });
+
+  it("只有累计（sub2api 不支持今日 stat）→ 今日补占位 —", () => {
+    expect(formatUsageLine(acc("sub2api", { totalUsd: 8.9, updatedAt: 1 }))).toBe(
+      "今日 — · 累计 $8.90",
+    );
+  });
+
+  it("无 usage（未刷新 / voapi-v2 两口径都不支持）→ 双占位 —", () => {
+    expect(formatUsageLine(acc("voapi-v2"))).toBe("今日 — · 累计 —");
+  });
+
+  it("今日消耗真为 0 → 显 $0.00（区别于拿不到的 —）", () => {
+    expect(formatUsageLine(acc("new-api", { todayUsd: 0, totalUsd: 0, updatedAt: 1 }))).toBe(
+      "今日 $0.00 · 累计 $0.00",
+    );
+  });
+
+  it("other 纯记录型不拉余额 → null 不显示该行", () => {
+    expect(formatUsageLine(acc("other"))).toBeNull();
   });
 });

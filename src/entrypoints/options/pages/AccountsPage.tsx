@@ -5,7 +5,7 @@ import { deleteAccount } from "@/storage/accounts";
 import { setGroupCollapsed } from "@/storage/groupsTags";
 import { accountsItem, groupsItem, tagsItem } from "@/storage/items";
 import { SITE_TYPE_LABELS, OAUTH_PROVIDER_LABELS, type Account, type Group } from "@/types";
-import { formatUsd, sumBalanceUsd } from "@/utils/quota";
+import { formatUsageLine, formatUsd, sumBalanceUsd } from "@/utils/quota";
 import {
   AccountFormDialog,
   EMPTY_FORM,
@@ -77,6 +77,7 @@ export default function AccountsPage() {
   if (!accounts) return null;
 
   const renderCard = (account: Account) => {
+    const usageLine = formatUsageLine(account);
     const tagBadges = account.tagIds
       .map((id) => {
         const name = tagName(id);
@@ -171,12 +172,8 @@ export default function AccountsPage() {
             <p className="readout text-[15px] text-ink">
               {account.balance ? formatUsd(account.balance.usd) : "—"}
             </p>
-            {account.usage && (account.usage.todayUsd !== undefined || account.usage.totalUsd !== undefined) && (
-              <p className="readout mt-0.5 text-[10px] text-ink-faint">
-                {account.usage.todayUsd !== undefined && `今日 ${formatUsd(account.usage.todayUsd)}`}
-                {account.usage.todayUsd !== undefined && account.usage.totalUsd !== undefined && " · "}
-                {account.usage.totalUsd !== undefined && `累计 ${formatUsd(account.usage.totalUsd)}`}
-              </p>
+            {usageLine && (
+              <p className="readout mt-0.5 text-[10px] text-ink-faint">{usageLine}</p>
             )}
           </div>
           <div className="flex gap-1.5 opacity-70 transition group-hover:opacity-100 focus-within:opacity-100">

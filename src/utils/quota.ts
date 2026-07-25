@@ -1,4 +1,6 @@
 /** new-api 系 quota → USD 换算因子 */
+import { BALANCE_SITE_TYPES, type Account } from "@/types";
+
 export const QUOTA_PER_USD = 500000;
 
 export function quotaToUsd(quota: number): number {
@@ -20,4 +22,15 @@ export function formatUsd(usd: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+/**
+ * 用量行文案（popup 与设置页共用，保证两处口径一致）：
+ * 会拉余额的站点显「今日 X · 累计 Y」，某口径拉不到补占位「—」（区分"支持但暂无"与"真的 0 消耗"）；
+ * other 纯记录型不拉余额、无用量概念，返回 null 不显示该行。
+ */
+export function formatUsageLine(account: Account): string | null {
+  if (!BALANCE_SITE_TYPES.includes(account.siteType)) return null;
+  const fmt = (v?: number) => (v !== undefined ? formatUsd(v) : "—");
+  return `今日 ${fmt(account.usage?.todayUsd)} · 累计 ${fmt(account.usage?.totalUsd)}`;
 }
