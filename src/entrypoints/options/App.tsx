@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { ArrowUpDown, Clock, FlaskConical, LayoutGrid, Shield, Tags } from "lucide-react";
+import { ArrowUpDown, Clock, FlaskConical, LayoutGrid, Settings2, Shield, Tags } from "lucide-react";
 import { cn, ToastHost } from "@/ui/components";
 import AccountsPage from "./pages/AccountsPage";
 import CheckinPage from "./pages/CheckinPage";
+import GeneralPage from "./pages/GeneralPage";
 import GroupsTagsPage from "./pages/GroupsTagsPage";
 import ImportExportPage from "./pages/ImportExportPage";
 import ModelTestPage from "./pages/ModelTestPage";
@@ -15,6 +16,7 @@ const NAV = [
   { key: "modeltest", icon: FlaskConical, label: "模型测试", page: ModelTestPage },
   { key: "security", icon: Shield, label: "安全", page: SecurityPage },
   { key: "data", icon: ArrowUpDown, label: "数据", page: ImportExportPage },
+  { key: "general", icon: Settings2, label: "通用", page: GeneralPage },
 ] as const;
 
 type NavKey = (typeof NAV)[number]["key"];

@@ -51,6 +51,15 @@ export const vaultMetaItem = storage.defineItem<VaultMeta | null>("local:vaultMe
   fallback: null,
 });
 
+export interface UiSettings {
+  /** 界面整体缩放倍率（CSS zoom），1 = 100% */
+  zoom: number;
+}
+
+export const uiSettingsItem = storage.defineItem<UiSettings>("local:uiSettings", {
+  fallback: { zoom: 1 },
+});
+
 /** 解锁后的 AES 密钥（raw base64）——只放 session 区，浏览器关闭即清空，永不落盘 */
 export const vaultKeyItem = storage.defineItem<string | null>("session:vaultKey", {
   fallback: null,

@@ -146,9 +146,10 @@ export default function App() {
   return (
     <div
       className={cn(
-        "flex max-h-[580px] w-[380px] flex-col",
+        // 高度反除 zoom：Chrome 弹窗物理高上限 600px，放大后按物理 580px 封顶，宽度则随缩放变大
+        "flex max-h-[calc(580px/var(--ui-zoom,1))] w-[380px] flex-col",
         // 弹窗打开时撑高视口，否则账号少时 popup 太矮、弹窗被压扁
-        (formState || pickingKeys || unlockDialogProps.open) && "min-h-[560px]",
+        (formState || pickingKeys || unlockDialogProps.open) && "min-h-[calc(560px/var(--ui-zoom,1))]",
       )}
     >
       <header className="relative border-b border-line px-4 pb-3 pt-4">
