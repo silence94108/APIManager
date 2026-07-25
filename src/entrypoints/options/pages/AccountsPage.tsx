@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { ArrowUpRight, ChevronRight, KeyRound, LayoutGrid } from "lucide-react";
+import { ArrowUpRight, ChevronRight, Hand, KeyRound, LayoutGrid } from "lucide-react";
+import { canCheckin, resolveCheckinPageUrl } from "@/checkin/helpers";
 import { deleteAccount } from "@/storage/accounts";
 import { setGroupCollapsed } from "@/storage/groupsTags";
 import { accountsItem, groupsItem, tagsItem } from "@/storage/items";
@@ -121,6 +122,16 @@ export default function AccountsPage() {
               className="rounded p-1 text-ink-mute opacity-70 transition hover:bg-carbon hover:text-phos group-hover:opacity-100"
             >
               <KeyRound size={14} />
+            </button>
+          )}
+          {/* 与 popup 行同一显隐契约：可自动签，或不参与但配了自定义签到链接（仅记录型）也给手动入口 */}
+          {(canCheckin(account) || !!account.checkinPageUrl?.trim()) && (
+            <button
+              title="去签到页"
+              onClick={() => void browser.tabs.create({ url: resolveCheckinPageUrl(account) })}
+              className="rounded p-1 text-ink-mute opacity-70 transition hover:bg-carbon hover:text-phos group-hover:opacity-100"
+            >
+              <Hand size={14} />
             </button>
           )}
           <button
