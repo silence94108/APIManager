@@ -1,5 +1,5 @@
 import type { Account, ProviderResult } from "@/types";
-import { CHECKIN_PAGE_PATHS, resolveCheckinPageUrl } from "./helpers";
+import { resolveCheckinPageUrls } from "./helpers";
 import { getProvider } from "./providers";
 
 /**
@@ -58,12 +58,23 @@ function waitForTabComplete(tabId: number): Promise<void> {
 /** 尝试辅助签到。成功返回 success 结果；失败/不支持返回 null（调用方保留原结果） */
 export async function assistTurnstileCheckin(account: Account): Promise<ProviderResult | null> {
   // 无默认签到页且未自定义链接的类型不知道该开哪个页面
-  if (!CHECKIN_PAGE_PATHS[account.siteType] && !account.checkinPageUrl?.trim()) return null;
+  const urls = resolveCheckinPageUrls(account);
+  if (urls.length === 0) return null;
 
+  // 新老主题签到页路由不同，逐个候选串行尝试，任一命中签到按钮且复核通过即成功、短路返回
+  for (const url of urls) {
+    const result = await tryCheckinViaPage(account, url);
+    if (result) return result;
+  }
+  return null;
+}
+
+/** 在单个签到页 URL 上尝试一轮：开临时窗口→等渲染→注入点击→服务端复核。任一步不成返回 null */
+async function tryCheckinViaPage(account: Account, url: string): Promise<ProviderResult | null> {
   let winId: number | undefined;
   try {
     const win = await browser.windows.create({
-      url: resolveCheckinPageUrl(account),
+      url,
       type: "popup",
       width: 460,
       height: 680,

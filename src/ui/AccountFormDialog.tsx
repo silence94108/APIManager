@@ -4,7 +4,7 @@ import { saveAccount, type AccountDraft } from "@/storage/accounts";
 import { vaultMetaItem } from "@/storage/items";
 import { sendMessage } from "@/messaging/protocol";
 import type { DetectedAccount } from "@/detect/types";
-import { CHECKIN_PAGE_PATHS } from "@/checkin/helpers";
+import { defaultCheckinPath } from "@/checkin/helpers";
 import {
   OAUTH_PROVIDER_LABELS,
   OAUTH_PROVIDERS,
@@ -661,12 +661,12 @@ export function AccountFormDialog({
         <div className="sm:col-span-2">
           <Field
             label="签到页链接（选填）"
-            hint={`站点签到页不是默认路径时填这里——完整 URL 或 / 开头路径均可；留空用默认 ${CHECKIN_PAGE_PATHS[form.siteType] ?? "站点首页"}`}
+            hint={`站点签到页不是默认路径时填这里——完整 URL 或 / 开头路径均可；留空用默认 ${defaultCheckinPath(form.siteType) ?? "站点首页"}`}
           >
             <Input
               value={form.checkinPageUrl}
               onChange={(e) => set({ checkinPageUrl: e.target.value })}
-              placeholder={CHECKIN_PAGE_PATHS[form.siteType] ?? "/checkin"}
+              placeholder={defaultCheckinPath(form.siteType) ?? "/checkin"}
             />
           </Field>
         </div>

@@ -6,33 +6,58 @@ import {
   type SiteType,
 } from "@/types";
 
-/** 各站点类型默认签到页路径（事实来自 all-api-hub 站点定义，docs/reference-all-api-hub.md） */
-export const CHECKIN_PAGE_PATHS: Partial<Record<SiteType, string>> = {
-  "new-api": "/console/personal",
+/**
+ * 各站点类型默认签到页路径（事实来自 all-api-hub 站点定义，docs/reference-all-api-hub.md）。
+ * 值可为多候选数组：new-api 新老主题签到页路由不同（默认主题 /console/personal，部分新版
+ * 主题 /profile），turnstileAssist 依次尝试，命中签到按钮并复核通过者胜。
+ */
+export const CHECKIN_PAGE_PATHS: Partial<Record<SiteType, string | string[]>> = {
+  "new-api": ["/console/personal", "/profile"],
   veloera: "/console/personal",
   anyrouter: "/console/topup",
   "voapi-v2": "/checkIn?_userMenuKey=checkIn",
 };
 
-/** 签到页地址：账号自定义（完整 URL 或 / 路径）优先，其次类型默认路径，兜底站点首页 */
-export function resolveCheckinPageUrl(
+/** 类型默认签到页的首候选——UI 提示/占位、"去签到页"按钮等只取单个地址处用 */
+export function defaultCheckinPath(siteType: SiteType): string | undefined {
+  const raw = CHECKIN_PAGE_PATHS[siteType];
+  return Array.isArray(raw) ? raw[0] : raw;
+}
+
+/**
+ * 签到页候选地址（各自拼成绝对 URL）：账号自定义链接优先且只此一条；否则取该类型的
+ * 全部候选。无任何候选时返回空数组（**不**兜底首页）——turnstileAssist 依此决定放弃，
+ * 避免拿站点首页瞎点。
+ */
+export function resolveCheckinPageUrls(
   account: Pick<Account, "url" | "siteType" | "checkinPageUrl">,
-): string {
+): string[] {
   const custom = account.checkinPageUrl?.trim();
   if (custom) {
     try {
-      return new URL(custom, account.url).toString();
+      return [new URL(custom, account.url).toString()];
     } catch {
-      // 非法自定义值退默认路径
+      // 非法自定义值退类型默认候选
     }
   }
-  const path = CHECKIN_PAGE_PATHS[account.siteType];
-  if (!path) return account.url;
-  try {
-    return new URL(path, account.url).toString();
-  } catch {
-    return account.url;
+  const raw = CHECKIN_PAGE_PATHS[account.siteType];
+  const paths = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
+  const urls: string[] = [];
+  for (const path of paths) {
+    try {
+      urls.push(new URL(path, account.url).toString());
+    } catch {
+      // 跳过非法路径，继续下一个候选
+    }
   }
+  return urls;
+}
+
+/** 签到页地址（单个主候选）：自定义/类型首候选，兜底站点首页。"去签到页"按钮与展示用 */
+export function resolveCheckinPageUrl(
+  account: Pick<Account, "url" | "siteType" | "checkinPageUrl">,
+): string {
+  return resolveCheckinPageUrls(account)[0] ?? account.url;
 }
 
 /** 账号是否有资格参与签到——runner 的 skip 判定与 UI 的按钮显隐共用同一真源 */
