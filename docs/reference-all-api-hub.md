@@ -49,6 +49,17 @@ anyrouter 响应 `{code, ret, success, message}`：`success:false`=失败；mess
 - token 模式 `credentials:"omit"`；cookie 模式 `credentials:"include"`
 - 响应 content-type 非 JSON（返回登录页 HTML）→ 视为未登录/被 Cloudflare 拦截
 
+## 新版 New API 会话认证（2026-09-13 补充）
+
+以下事实来自用户提供的 `https://api.abnt.it/static/js/index.7e5f802291.js` 公开前端认证模块，仅记录协议，不复用站点实现：
+
+- 用户与短期访问令牌保存在前端内存，不再依赖 `localStorage.user`；可读 Cookie `new_api_has_session` 仅表示可能存在登录会话。
+- `POST /api/user/auth/refresh`，携带浏览器 Cookie、无请求体；成功响应为 `{ success: true, data: { access_token, token_type: "Bearer", access_expires_at, user: { id, username }, session: { sid, current } } }`。到期时间为 Unix 秒，刷新 Cookie 为 HttpOnly。
+- 后续 `/api/user/self` 等业务接口要求 `Authorization: Bearer <access_token>`，仅带 Cookie 会返回 401。
+- 已关联账号的刷新请求携带 `X-Auth-Session: <sid>`，并校验返回的用户 ID 和会话 ID，防止浏览器切换账号后混用凭据。
+- 站点用同源 Web Lock `new-api:auth-refresh` 协调续期。409 `AUTH_REFRESH_RACE` 可短暂重试；401 或 `AUTH_SESSION_MISMATCH` 要重新登录/识别，扩展不能放弃原会话约束并自动改用其他账号。
+- 扩展以 `Account.sessionAuth` 保存会话 ID 和令牌到期时间，续期令牌只缓存在当前扩展运行环境中；旧版长期 Token 不进入该刷新流程。
+
 ## 调度语义（chrome.alarms）
 
 - 双闹钟：每日 `checkin:daily` + 重试 `checkin:retry`
