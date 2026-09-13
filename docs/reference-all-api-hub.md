@@ -18,7 +18,7 @@ voapi-v2 响应信封 `{code, data, msg}`：
 - `code 1` + msg 匹配 `/signed|check/i` = 已签到
 - `code 2` + msg 匹配 `/auth\s*expire|unauthorized|token|jwt|login/i` = JWT 过期（→ 标记账号 expired）
 
-anyrouter 响应 `{code, ret, success, message}`：`success:false`=失败；message 含 `success`/`签到成功`=成功；空 message 或命中已签词表=已签。
+anyrouter 响应 `{code, ret, success, message}`：`success:false` 优先按失败/已签/待验证文案分类；成功响应的 message 含 `success`/`签到成功`=成功；显式空 message 或命中已签词表=已签，缺失整个响应状态不能当成已签。
 
 **"已签到" message 词表**（忽略大小写）：`今天已经签到` / `已经签到` / `已签到` / `already`。
 
@@ -59,6 +59,12 @@ anyrouter 响应 `{code, ret, success, message}`：`success:false`=失败；mess
 - 已关联账号的刷新请求携带 `X-Auth-Session: <sid>`，并校验返回的用户 ID 和会话 ID，防止浏览器切换账号后混用凭据。
 - 站点用同源 Web Lock `new-api:auth-refresh` 协调续期。409 `AUTH_REFRESH_RACE` 可短暂重试；401 或 `AUTH_SESSION_MISMATCH` 要重新登录/识别，扩展不能放弃原会话约束并自动改用其他账号。
 - 扩展以 `Account.sessionAuth` 保存会话 ID 和令牌到期时间，续期令牌只缓存在当前扩展运行环境中；旧版长期 Token 不进入该刷新流程。
+
+用户实测补充：Aether API（`https://api.abnt.it/`）在后台请求中返回 `request origin is not allowed`，账号识别的同源请求正常。扩展对这种来源拒绝，以及 AnyRouter 等站点返回的 HTML 登录/验证页，增加一次同源标签页请求回退；续期仍使用 `X-Auth-Session` 和 `new-api:auth-refresh` 锁，并校验返回的用户 ID 与会话 ID。Cookie 请求在页面内先通过账号接口核对用户，页面跳转到其他来源时停止；回退后仍为 HTML 或验证失败时保留失败/待验证状态。
+
+旧版 AnyRouter 的进一步实测：用户刷新控制台页面即可签到。该类型改为直接用同源页面请求，旧账号残留的 Bearer Token 不随 Cookie 发送；签到时临时加载签到页触发前端自动流程，随后请求 `/api/user/sign_in` 确认，不再查找签到按钮。优先使用账号的自定义同源签到地址，默认 `/console/topup`；不会刷新用户原有标签页。
+
+所有后台 API 请求连同响应体解析都有超时（普通请求 15 秒，会话续期 8 秒），页面操作另有后台侧 30 秒总时限，防止页面暂停后 Promise 一直未返回。今日用量是可选统计，限时 5 秒，不因该接口无响应而无限等待余额或签到结果。
 
 ## 调度语义（chrome.alarms）
 
