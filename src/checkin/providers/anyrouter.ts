@@ -1,6 +1,7 @@
 import { siteFetch } from "@/api/transport";
 import type { Account, ProviderResult } from "@/types";
 import type { CheckinProvider } from "../types";
+import { resolveCheckinPageUrl } from "../helpers";
 import { failedFromError, resultFromSuccessMessage } from "./shared";
 
 interface SignInResponse {
@@ -12,7 +13,7 @@ interface SignInResponse {
 
 /**
  * AnyRouter：强制 Cookie 认证（credentials:include 复用浏览器登录态），
- * 无独立状态查询接口——今日是否已签只能靠本地签到记录。
+ * 旧版会在加载控制台时自动签到；打开独立页面触发，再以 sign_in 响应确认结果。
  */
 export const anyrouterProvider: CheckinProvider = {
   async checkIn(account: Account): Promise<ProviderResult> {
@@ -21,14 +22,17 @@ export const anyrouterProvider: CheckinProvider = {
         method: "POST",
         body: "{}",
         headers: { "X-Requested-With": "XMLHttpRequest" },
+        pageUrl: resolveCheckinPageUrl(account),
+        freshPage: true,
       });
       const message = res.message ?? "";
 
-      if (message.includes("签到成功") || message.toLowerCase().includes("success")) {
+      if (res.success === false) return resultFromSuccessMessage(false, message);
+      if (message.includes("签到成功") || /\bsuccess(?:ful|fully)?\b/i.test(message)) {
         return { status: "success", message };
       }
       // AnyRouter 特例：已签到时 message 为空
-      if (message === "") {
+      if (res.message === "") {
         return { status: "already_checked", message };
       }
       return resultFromSuccessMessage(res.success === true || res.ret === 1, message);

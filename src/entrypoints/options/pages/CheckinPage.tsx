@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ArrowUpRight, Check, Hand, RotateCcw, TriangleAlert, X, Zap } from "lucide-react";
-import { formatRunSummary, resolveCheckinPageUrl } from "@/checkin/helpers";
+import { formatRunSummary, isCheckedToday, resolveCheckinPageUrl } from "@/checkin/helpers";
 import { sendMessage } from "@/messaging/protocol";
 import {
   accountsItem,
@@ -95,7 +95,7 @@ export default function CheckinPage() {
       }
       // 结果以存储里本账号的今日记录为准（与 popup 单签同一契约），列表经 useStorageItem 自动刷新
       const record = (await checkinResultsItem.getValue())[accountId];
-      if (record?.date === today && record.status === "success") toast(`${name} 重试成功`);
+      if (isCheckedToday(record, today)) toast(`${name} ${record.status === "already_checked" ? "今天已签到" : "重试成功"}`);
       else toast(`${name} 重试后仍未成功${record?.message ? `：${record.message}` : ""}`, "err");
     } finally {
       setRetryingId(null);

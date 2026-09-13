@@ -57,6 +57,8 @@ function waitForTabComplete(tabId: number): Promise<void> {
 
 /** 尝试辅助签到。成功返回 success 结果；失败/不支持返回 null（调用方保留原结果） */
 export async function assistTurnstileCheckin(account: Account): Promise<ProviderResult | null> {
+  // AnyRouter 已由 provider 加载页面触发自动签到，不存在需要点击的签到按钮。
+  if (account.siteType === "anyrouter") return null;
   // 无默认签到页且未自定义链接的类型不知道该开哪个页面
   const urls = resolveCheckinPageUrls(account);
   if (urls.length === 0) return null;
