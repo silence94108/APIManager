@@ -89,6 +89,7 @@ export async function fetchTodayUsedUsd(account: Account): Promise<number | unde
     const res = await siteFetch<NewApiLogStatResponse>(
       account,
       `/api/log/self/stat?${params.toString()}`,
+      { timeoutMs: 5000 },
     );
     if (res.success === false) return undefined;
     const q = res.data?.quota;
