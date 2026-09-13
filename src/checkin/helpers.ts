@@ -9,7 +9,7 @@ import {
 /**
  * 各站点类型默认签到页路径（事实来自 all-api-hub 站点定义，docs/reference-all-api-hub.md）。
  * 值可为多候选数组：new-api 新老主题签到页路由不同（默认主题 /console/personal，部分新版
- * 主题 /profile），turnstileAssist 依次尝试，命中签到按钮并复核通过者胜。
+ * 主题 /profile），turnstileAssist 无按钮时才尝试下一候选，点击后只复核状态。
  */
 export const CHECKIN_PAGE_PATHS: Partial<Record<SiteType, string | string[]>> = {
   "new-api": ["/console/personal", "/profile"],
@@ -69,11 +69,42 @@ export function canCheckin(account: Account): boolean {
   return account.authType !== "token" || !!account.accessToken;
 }
 
+/** 仅绑定站点身份，不把认证凭据复制进签到记录。 */
+export function checkinContext(account: Pick<Account, "url" | "siteType" | "userId">): string {
+  return JSON.stringify([account.url, account.siteType, account.userId]);
+}
+
+export function currentCheckinRecord(account: Account, record?: AccountCheckinRecord): AccountCheckinRecord | undefined {
+  // 老版本记录没有 context，仍承认其成功状态；编辑身份时由 storage 绑定旧身份。
+  return record && (!record.context || record.context === checkinContext(account)) ? record : undefined;
+}
+
+export function hasUnavailableCheckin(account: Account): boolean {
+  const capability = account.checkinCapability;
+  return capability?.context === checkinContext(account) && capability.state !== "supported";
+}
+
+/** 执行中改凭据或签到页面后，旧请求不能继续提交或回写账号状态。 */
+export function sameCheckinAccount(a: Account, b: Account): boolean {
+  return checkinContext(a) === checkinContext(b) && a.authType === b.authType &&
+    a.accessToken === b.accessToken &&
+    a.sessionAuth?.sessionId === b.sessionAuth?.sessionId &&
+    a.sessionAuth?.accessExpiresAt === b.sessionAuth?.accessExpiresAt &&
+    a.checkinPageUrl === b.checkinPageUrl;
+}
+
+export function checkinRetryAt(account: Account, record: AccountCheckinRecord | undefined, cooldowns: Record<string, number>): number {
+  const values = [currentCheckinRecord(account, record)?.retryAt, cooldowns[account.url]];
+  return Math.max(0, ...values.filter((at): at is number => typeof at === "number" && Number.isFinite(at)));
+}
+
 /** 记录是否表示"今天已签"（success 与 already_checked 等价视为已签） */
 export function isCheckedToday(
   record: AccountCheckinRecord | undefined,
   today: string,
+  account?: Account,
 ): boolean {
+  if (account) record = currentCheckinRecord(account, record);
   return (
     record?.date === today &&
     (record.status === "success" || record.status === "already_checked")

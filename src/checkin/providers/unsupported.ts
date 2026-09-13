@@ -1,5 +1,6 @@
 import type { Account, ProviderResult } from "@/types";
 import type { CheckinProvider } from "../types";
+import { checkinFailure } from "./shared";
 
 /**
  * 无签到能力的站点占位 provider（sub2api 无内置签到、other 为通用记录型）。
@@ -8,6 +9,6 @@ import type { CheckinProvider } from "../types";
  */
 export const unsupportedCheckinProvider: CheckinProvider = {
   async checkIn(_account: Account): Promise<ProviderResult> {
-    return { status: "failed", message: "该站点类型不支持签到" };
+    return { ...checkinFailure("unsupported", "该站点类型不支持签到"), capability: "unsupported" };
   },
 };

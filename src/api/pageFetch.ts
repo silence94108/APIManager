@@ -20,6 +20,8 @@ export interface PageFetchRequest {
 }
 
 interface PageResponse {
+  url?: string;
+  beforeRequest?: boolean;
   status: number;
   headers: Record<string, string>;
   body: string;
@@ -27,10 +29,10 @@ interface PageResponse {
 
 type PageFetchResult =
   | { response: PageResponse }
-  | { error: { status: number; message: string } };
+  | { error: { status: number; message: string; code?: string; requestUrl?: string; beforeRequest?: boolean } };
 
 export class PageFetchError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public code?: string, public requestUrl?: string, public beforeRequest?: boolean) {
     super(message);
     this.name = "PageFetchError";
   }
@@ -53,8 +55,11 @@ export async function fetchInPage(
   const remaining = Math.min(deadline - Date.now(), request.refreshSession ? 8000 : 15000);
   if (remaining <= 0) return { error: { status: 0, message: "站点页面请求已超时，请重试" } };
   const timer = setTimeout(() => controller.abort(), remaining);
+  let requestUrl: string | undefined;
   const serialize = async (response: Response): Promise<{ response: PageResponse }> => ({
     response: {
+      url: response.url || requestUrl,
+      beforeRequest: requestUrl !== url.href && !request.freshPage,
       status: response.status,
       headers: Object.fromEntries(response.headers.entries()),
       body: await response.text(),
@@ -69,6 +74,7 @@ export async function fetchInPage(
     if (location.origin !== url.origin || new URL(target).origin !== url.origin) {
       throw new Error("站点页面已跳转，请打开原站点后重试");
     }
+    requestUrl = target;
     return fetch(target, {
       method,
       headers,
@@ -107,7 +113,8 @@ export async function fetchInPage(
         return { error: { status: 401, message: "站点登录已失效，请登录后重新识别账号" } };
       }
       if (String(id) !== request.verifyUser.id) {
-        return { error: { status: 409, message: "浏览器当前登录账号与保存的账号不一致，请登录后重新识别" } };
+        return { error: { status: 409, code: "AUTH_SESSION_MISMATCH", requestUrl,
+          message: "浏览器当前登录账号与保存的账号不一致，请登录后重新识别" } };
       }
       if (request.method === "GET" && url.href === identityUrl) return snapshot;
     }
@@ -125,6 +132,8 @@ export async function fetchInPage(
     return {
       error: {
         status: 0,
+        requestUrl,
+        beforeRequest: requestUrl !== url.href && !request.freshPage,
         message: controller.signal.aborted || Date.now() >= deadline
           ? "站点页面请求超时，请稍后重试"
           : "站点页面请求失败，请确认已登录且页面验证已完成后重试",
@@ -239,9 +248,15 @@ export async function fetchFromSitePage(request: PageFetchRequest): Promise<Resp
       checkDeadline();
       const value = result?.result;
       if (!value) throw new Error("页面未返回请求结果");
-      if ("error" in value) throw new PageFetchError(value.error.status, value.error.message);
-      const { status, headers, body } = value.response;
-      return new Response([204, 205, 304].includes(status) ? null : body, { status, headers });
+      if ("error" in value) throw new PageFetchError(
+        value.error.status, value.error.message, value.error.code, value.error.requestUrl, value.error.beforeRequest,
+      );
+      const { status, headers, body, url, beforeRequest } = value.response;
+      const response = new Response([204, 205, 304].includes(status) ? null : body, { status, headers });
+      // Response 构造器没有 url 参数，补回来源以区分身份查询和业务接口的失败。
+      if (url) Object.defineProperty(response, "url", { value: url });
+      if (beforeRequest) Object.defineProperty(response, "beforeRequest", { value: true });
+      return response;
     })(), timeoutMs, timeoutError);
   } catch (error) {
     if (error instanceof PageFetchError) throw error;

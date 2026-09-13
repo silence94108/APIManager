@@ -1,7 +1,8 @@
 import { patchSchedulerState } from "@/storage/checkinState";
-import { checkinSettingsItem, schedulerStateItem } from "@/storage/items";
-import type { CheckinSettings } from "@/types";
+import { accountsItem, checkinCooldownsItem, checkinResultsItem, checkinSettingsItem, schedulerStateItem } from "@/storage/items";
+import type { CheckinSettings, SchedulerState } from "@/types";
 import { localDayString, parseHm } from "@/utils/day";
+import { canCheckin, checkinContext, checkinRetryAt, hasUnavailableCheckin } from "./helpers";
 import { runCheckin } from "./runner";
 
 export const DAILY_ALARM = "checkin:daily";
@@ -64,102 +65,143 @@ export function computeDailyFireTime(
   return Math.floor(lower + random() * (windowEnd - lower));
 }
 
-/** 保证有一个有效的每日闹钟。force=true 时强制重排（设置变更后用） */
-export async function ensureScheduled(force = false): Promise<void> {
+/** 保证每日闹钟有效，并从持久化队列恢复重试闹钟。 */
+export function ensureScheduled(force = false): Promise<void> {
+  return serializeSchedule(() => restoreScheduled(force));
+}
+
+async function restoreScheduled(force: boolean): Promise<void> {
   const settings = await checkinSettingsItem.getValue();
   if (!settings.autoEnabled) {
     await browser.alarms.clear(DAILY_ALARM);
-    await browser.alarms.clear(RETRY_ALARM);
-    await patchSchedulerState({
-      nextDailyAt: undefined,
-      nextRetryAt: undefined,
-      dailyAlarmTargetDay: undefined,
-      retry: undefined,
-    });
+    await clearRetry();
+    await patchSchedulerState({ nextDailyAt: undefined, dailyAlarmTargetDay: undefined });
     return;
   }
-  if (!force) {
-    const existing = await browser.alarms.get(DAILY_ALARM);
-    if (existing && existing.scheduledTime > Date.now()) return;
-  }
-  await scheduleDaily();
+  const state = await schedulerStateItem.getValue();
+  if (state.retry) await scheduleRetry(state.retry);
+  else await clearRetry();
+  const existing = await browser.alarms.get(DAILY_ALARM);
+  if (force || !existing || existing.scheduledTime <= Date.now()) await scheduleDaily();
 }
 
 async function scheduleDaily(): Promise<void> {
   const settings = await checkinSettingsItem.getValue();
+  if (!settings.autoEnabled) return;
   const state = await schedulerStateItem.getValue();
   const when = computeDailyFireTime(settings, state.lastDailyRunDay, new Date());
-  browser.alarms.create(DAILY_ALARM, { when });
+  await browser.alarms.create(DAILY_ALARM, { when });
   await patchSchedulerState({
     nextDailyAt: when,
     dailyAlarmTargetDay: localDayString(new Date(when)),
   });
 }
 
-export async function handleAlarm(alarm: { name: string }): Promise<void> {
-  if (alarm.name === DAILY_ALARM) return handleDailyAlarm();
-  if (alarm.name === RETRY_ALARM) return handleRetryAlarm();
+// 启动恢复、设置变更和 alarm 回调串行，避免旧队列覆盖新一轮的结果。
+let handling: Promise<void> = Promise.resolve();
+function serializeSchedule(action: () => Promise<void>): Promise<void> {
+  const task = handling.then(action);
+  handling = task.catch(() => {});
+  return task;
+}
+
+export function handleAlarm(alarm: { name: string }): Promise<void> {
+  return serializeSchedule(async () => {
+    if (alarm.name === DAILY_ALARM) await handleDailyAlarm();
+    if (alarm.name === RETRY_ALARM) await handleRetryAlarm();
+  });
 }
 
 async function handleDailyAlarm(): Promise<void> {
+  if (!(await checkinSettingsItem.getValue()).autoEnabled) return;
   const today = localDayString();
   const state = await schedulerStateItem.getValue();
-
-  // 休眠跨天后触发的陈旧闹钟：目标日已过，丢弃并重排
-  if (state.dailyAlarmTargetDay && state.dailyAlarmTargetDay !== today) {
-    await scheduleDaily();
-    return;
-  }
-  if (state.lastDailyRunDay === today) {
+  if ((state.dailyAlarmTargetDay && state.dailyAlarmTargetDay !== today) || state.lastDailyRunDay === today) {
     await scheduleDaily();
     return;
   }
 
   await patchSchedulerState({ lastDailyRunDay: today });
-  const { failedIds } = await runCheckin({ kind: "daily" });
-  await maybeScheduleRetry(today, failedIds, {});
+  const { retryableIds = [] } = await runCheckin({ kind: "daily" });
+  await scheduleRetry({
+    day: today, pendingIds: retryableIds,
+    attempts: Object.fromEntries(retryableIds.map((id) => [id, 1])),
+  });
   await scheduleDaily();
+}
+
+type RetryState = NonNullable<SchedulerState["retry"]>;
+
+/** 从最新账号和记录过滤队列，旧版失败记录不默认可重试。 */
+async function eligibleRetry(retry: RetryState): Promise<RetryState> {
+  const [accounts, results, cooldowns] = await Promise.all([
+    accountsItem.getValue(), checkinResultsItem.getValue(), checkinCooldownsItem.getValue(),
+  ]);
+  const pendingIds: string[] = [];
+  const notBefore: Record<string, number> = {};
+  for (const id of retry.pendingIds) {
+    const account = accounts.find((a) => a.id === id);
+    const record = results[id];
+    if (!account || !canCheckin(account) || hasUnavailableCheckin(account) ||
+      record?.context !== checkinContext(account) || record.date !== retry.day ||
+      record.status !== "failed" || record.retryable !== true || record.uncertain ||
+      (retry.attempts[id] ?? 1) >= MAX_ATTEMPTS_PER_DAY) continue;
+    const when = Math.max(
+      retry.notBefore?.[id] ?? 0, record.at + RETRY_DELAY_MS,
+      checkinRetryAt(account, record, cooldowns),
+    );
+    // 限流跨午夜时取消本日重试；站点等待时间仍由 cooldowns 保留给明天。
+    if (!Number.isFinite(when) || localDayString(new Date(when)) !== retry.day) continue;
+    pendingIds.push(id);
+    notBefore[id] = when;
+  }
+  return { ...retry, pendingIds, notBefore };
 }
 
 async function handleRetryAlarm(): Promise<void> {
   const state = await schedulerStateItem.getValue();
-  const retry = state.retry;
-  if (!retry) return;
-
-  const today = localDayString();
-  if (retry.day !== today) {
-    // 重试绝不跨天
+  const settings = await checkinSettingsItem.getValue();
+  if (!state.retry) return;
+  if (!settings.autoEnabled || !settings.retryEnabled || state.retry.day !== localDayString()) {
     await clearRetry();
     return;
   }
 
-  const { failedIds } = await runCheckin({ accountIds: retry.pendingIds, kind: "retry" });
-  await maybeScheduleRetry(today, failedIds, retry.attempts);
+  const retry = await eligibleRetry(state.retry);
+  const dueIds = retry.pendingIds.filter((id) => retry.notBefore![id] <= Date.now());
+  if (dueIds.length === 0) {
+    await scheduleRetry(retry);
+    return;
+  }
+  const waitingIds = retry.pendingIds.filter((id) => !dueIds.includes(id));
+  const attempts = { ...retry.attempts };
+  for (const id of dueIds) attempts[id] = (attempts[id] ?? 1) + 1;
+  // 请求之前计次；后台中断后也不能把已开始的尝试当成免费重试。
+  await patchSchedulerState({ retry: {
+    ...retry, attempts,
+    notBefore: { ...retry.notBefore, ...Object.fromEntries(dueIds.map((id) => [id, Date.now() + RETRY_DELAY_MS])) },
+  } });
+  const { retryableIds = [] } = await runCheckin({ accountIds: dueIds, kind: "retry" });
+  const stillFailed = retryableIds.filter((id) => dueIds.includes(id));
+  const notBefore = Object.fromEntries(waitingIds.map((id) => [id, retry.notBefore![id]]));
+  await scheduleRetry({ day: retry.day, pendingIds: [...waitingIds, ...stillFailed], attempts, notBefore });
 }
 
-async function maybeScheduleRetry(
-  day: string,
-  failedIds: string[],
-  prevAttempts: Record<string, number>,
-): Promise<void> {
+async function scheduleRetry(candidate: RetryState): Promise<void> {
   const settings = await checkinSettingsItem.getValue();
-  if (!settings.retryEnabled || failedIds.length === 0) {
+  if (!settings.autoEnabled || !settings.retryEnabled || candidate.day !== localDayString()) {
     await clearRetry();
     return;
   }
-
-  const attempts: Record<string, number> = { ...prevAttempts };
-  for (const id of failedIds) attempts[id] = (attempts[id] ?? 0) + 1;
-  const pendingIds = failedIds.filter((id) => attempts[id] < MAX_ATTEMPTS_PER_DAY);
-
-  if (pendingIds.length === 0) {
+  const retry = await eligibleRetry(candidate);
+  if (retry.pendingIds.length === 0) {
     await clearRetry();
     return;
   }
-
-  const when = Date.now() + RETRY_DELAY_MS;
-  browser.alarms.create(RETRY_ALARM, { when });
-  await patchSchedulerState({ retry: { day, pendingIds, attempts }, nextRetryAt: when });
+  const when = Math.max(Date.now(), Math.min(...Object.values(retry.notBefore!)));
+  // 先记队列，再建闹钟；service worker 中断后 ensureScheduled 可以恢复。
+  await patchSchedulerState({ retry, nextRetryAt: when });
+  await browser.alarms.create(RETRY_ALARM, { when });
 }
 
 async function clearRetry(): Promise<void> {

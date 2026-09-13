@@ -117,6 +117,15 @@ describe("页面内同源请求", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("Cookie 身份接口失败时序列化其真实地址", async () => {
+    request.verifyUser = { id: "12", endpoint: "/api/user/self" };
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: "not found" }, 404));
+    expect(await fetchInPage(request)).toMatchObject({
+      response: { status: 404, url: origin + "/api/user/self" },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("校验账号后发生跨域导航时不提交签到", async () => {
     request.credentials = "include";
     request.verifyUser = { id: "12", endpoint: "/api/user/self" };
@@ -181,6 +190,14 @@ describe("页面内同源请求", () => {
 });
 
 describe("标签页复用与清理", () => {
+  it("重建页面响应时保留身份接口来源", async () => {
+    executeScript.mockResolvedValueOnce([{ result: { response: {
+      status: 404, headers: { "content-type": "application/json" },
+      body: '{"message":"not found"}', url: origin + "/api/user/self",
+    } } }]);
+    const response = await fetchFromSitePage(request);
+    expect(response.url).toBe(origin + "/api/user/self");
+  });
   it("复用现有同源页面，不跳转或关闭用户页面", async () => {
     query.mockResolvedValue([{ id: 7, url: origin + "/console" }]);
 

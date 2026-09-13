@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Account } from "@/types";
+import { ApiError } from "@/api/transport";
 import { anyrouterProvider } from "../providers/anyrouter";
 import { assistTurnstileCheckin } from "../turnstileAssist";
 
@@ -65,5 +66,34 @@ describe("AnyRouter 页面加载签到", () => {
   it("页面签到尝试结束后不再另开窗口寻找签到按钮", async () => {
     expect(await assistTurnstileCheckin(account)).toBeNull();
     expect(createWindow).not.toHaveBeenCalled();
+  });
+
+  it("恢复不确定记录时没有只读接口，不能再打开页面或发 POST", async () => {
+    expect(await anyrouterProvider.checkIn(account, { reconcileOnly: true }))
+      .toMatchObject({ uncertain: true, retryable: false });
+    expect(siteFetch).not.toHaveBeenCalled();
+  });
+
+  it("打开可能自动签到的页面前必须保存日志", async () => {
+    const beforeSubmit = vi.fn(async () => {});
+    siteFetch.mockImplementationOnce(async () => {
+      expect(beforeSubmit).toHaveBeenCalledTimes(1);
+      return { success: true, message: "" };
+    });
+    await anyrouterProvider.checkIn(account, { beforeSubmit });
+    expect(siteFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("日志保存失败时不加载页面", async () => {
+    expect(await anyrouterProvider.checkIn(account, { beforeSubmit: async () => { throw new Error("storage"); } }))
+      .toMatchObject({ reason: "storage", retryable: false });
+    expect(siteFetch).not.toHaveBeenCalled();
+  });
+
+  it("页面加载后的确认请求即使被限流，也保留不确定并停止重试", async () => {
+    const until = Date.now() + 60_000;
+    siteFetch.mockRejectedValueOnce(new ApiError(429, "slow down", undefined, until));
+    expect(await anyrouterProvider.checkIn(account)).toMatchObject({ uncertain: true, retryable: false, retryAt: until });
+    expect(siteFetch).toHaveBeenCalledTimes(1);
   });
 });

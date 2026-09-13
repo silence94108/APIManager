@@ -2,12 +2,17 @@ import type { Account, NewApiSessionAuth } from "@/types";
 import { buildCompatUserHeaders } from "./compatHeaders";
 import { fetchFromSitePage, PageFetchError, type PageFetchRequest } from "./pageFetch";
 import { withRequestTimeout } from "./requestTimeout";
+import { parseRetryAfter } from "./retryAfter";
 
 export class ApiError extends Error {
+  requestUrl?: string;
+  /** 能证明业务请求尚未发送；重定向后的 URL 不足以作为此证据。 */
+  beforeRequest?: boolean;
   constructor(
     public status: number,
     message: string,
     public code?: string,
+    public retryAfterAt?: number,
   ) {
     super(message);
     this.name = "ApiError";
@@ -52,8 +57,11 @@ class HtmlResponseError extends ApiError {}
 class RequestOriginError extends ApiError {}
 
 /** 后台与页面请求共用解析，页面回退后的失败不再重复提交。 */
-async function parseJsonResponse<T>(res: Response): Promise<T> {
+async function parseJsonBody<T>(res: Response): Promise<T> {
   const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
+  if (res.status === 429) {
+    throw new ApiError(429, "站点请求过于频繁，请等待限流解除后重试", "RATE_LIMITED", parseRetryAfter(res.headers.get("retry-after")));
+  }
   // Cloudflare 人机验证挑战：cf-mitigated:challenge（现代 Turnstile 托管挑战），
   // 或经 Cloudflare（有 cf-ray）返回 403/503 的非 JSON 挑战页。单独归类交上层引导。
   const isCfChallenge =
@@ -74,6 +82,7 @@ async function parseJsonResponse<T>(res: Response): Promise<T> {
     throw new HtmlResponseError(
       res.status,
       "站点返回了非 JSON 响应，请打开站点登录或完成验证后重试",
+      "NON_JSON_RESPONSE",
     );
   }
 
@@ -81,13 +90,13 @@ async function parseJsonResponse<T>(res: Response): Promise<T> {
   try {
     data = await res.json();
   } catch {
-    throw new ApiError(res.status, "站点响应 JSON 解析失败");
+    throw new ApiError(res.status, "站点响应 JSON 解析失败", "INVALID_JSON");
   }
 
   const message = extractMessage(data);
   const failed = !res.ok || (data && typeof data === "object" && (data as Record<string, unknown>).success === false);
   if (failed && /request origin is not allowed/i.test(message ?? "")) {
-    throw new RequestOriginError(res.status, message!);
+    throw new RequestOriginError(res.status, message!, "REQUEST_ORIGIN_NOT_ALLOWED");
   }
   if (!res.ok) {
     const code = data && typeof data === "object" ? (data as Record<string, unknown>).code : undefined;
@@ -100,12 +109,24 @@ async function parseJsonResponse<T>(res: Response): Promise<T> {
   return data as T;
 }
 
+async function parseJsonResponse<T>(res: Response): Promise<T> {
+  try {
+    return await parseJsonBody<T>(res);
+  } catch (error) {
+    if (error instanceof ApiError && res.url) error.requestUrl = res.url;
+    if (error instanceof ApiError && (res as Response & { beforeRequest?: boolean }).beforeRequest) {
+      error.beforeRequest = true;
+    }
+    throw error;
+  }
+}
+
 type PageRequestOptions = Pick<PageFetchRequest,
   "verifyUser" | "refreshSession" | "pageUrl" | "freshPage" | "timeoutMs"
 > & { preferPage?: boolean };
 
 /** 普通业务请求与会话刷新均有超时；来源受限时最多回退一次。 */
-async function fetchJson<T>(
+async function fetchJsonRequest<T>(
   url: string,
   options: RequestInit,
   pageOptions: PageRequestOptions,
@@ -123,7 +144,12 @@ async function fetchJson<T>(
       });
       return await parseJsonResponse<T>(response);
     } catch (error) {
-      if (error instanceof PageFetchError) throw new ApiError(error.status, error.message);
+      if (error instanceof PageFetchError) {
+        const converted = new ApiError(error.status, error.message, error.code);
+        converted.requestUrl = error.requestUrl;
+        converted.beforeRequest = error.beforeRequest;
+        throw converted;
+      }
       throw error;
     }
   };
@@ -149,7 +175,7 @@ async function fetchJson<T>(
     });
   } catch (error) {
     const canRetryInPage = error instanceof RequestOriginError || error instanceof VerificationRequiredError ||
-      (error instanceof HtmlResponseError && (
+      (options.method !== "POST" && error instanceof HtmlResponseError && (
         (error.status >= 200 && error.status < 300) || [401, 403, 503].includes(error.status)
       ));
     if (!canRetryInPage) throw error;
@@ -157,9 +183,20 @@ async function fetchJson<T>(
       return await requestPage();
     } catch (pageError) {
       // 页面暂不可用时仍保留待验证状态，交由签到页引导用户完成验证。
-      if (error instanceof VerificationRequiredError && pageError instanceof ApiError && pageError.status === 0) throw error;
+      if (options.method !== "POST" && error instanceof VerificationRequiredError &&
+        pageError instanceof ApiError && pageError.status === 0) throw error;
       throw pageError;
     }
+  }
+}
+
+async function fetchJson<T>(url: string, options: RequestInit, pageOptions: PageRequestOptions): Promise<T> {
+  try {
+    return await fetchJsonRequest<T>(url, options, pageOptions);
+  } catch (error) {
+    // 保留错误实际来源；会话刷新接口的 404 不能被误判为签到能力消失。
+    if (error instanceof ApiError && !error.requestUrl) error.requestUrl = url;
+    throw error;
   }
 }
 
@@ -269,7 +306,15 @@ export async function siteFetch<T = unknown>(
   endpoint: string,
   options: SiteFetchOptions = {},
 ): Promise<T> {
-  const session = account.sessionAuth ? await getSessionToken(account) : undefined;
+  const loadSession = async (rejectedToken?: string) => {
+    try {
+      return await getSessionToken(account, rejectedToken);
+    } catch (error) {
+      if (error instanceof ApiError) error.beforeRequest = true;
+      throw error;
+    }
+  };
+  const session = account.sessionAuth ? await loadSession() : undefined;
   const legacyAnyrouter = account.siteType === "anyrouter" && !session;
   const cookieAuth = legacyAnyrouter || (account.authType === "cookie" && !session);
   const request = (accessToken: string | undefined): Promise<T> => {
@@ -303,8 +348,8 @@ export async function siteFetch<T = unknown>(
     return await request(session?.accessToken ?? account.accessToken);
   } catch (error) {
     if (error instanceof VerificationRequiredError) throw error;
-    if (!session || !(error instanceof ApiError) || error.status !== 401) throw error;
-    const renewed = await getSessionToken(account, session.accessToken);
+    if (!session || options.freshPage || !(error instanceof ApiError) || error.status !== 401) throw error;
+    const renewed = await loadSession(session.accessToken);
     return request(renewed.accessToken);
   }
 }

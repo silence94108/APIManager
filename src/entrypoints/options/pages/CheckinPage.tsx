@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ArrowUpRight, Check, Hand, RotateCcw, TriangleAlert, X, Zap } from "lucide-react";
-import { formatRunSummary, isCheckedToday, resolveCheckinPageUrl } from "@/checkin/helpers";
+import { canCheckin, currentCheckinRecord, formatRunSummary, isCheckedToday, resolveCheckinPageUrl } from "@/checkin/helpers";
 import { sendMessage } from "@/messaging/protocol";
 import {
   accountsItem,
@@ -94,9 +94,10 @@ export default function CheckinPage() {
         return;
       }
       // 结果以存储里本账号的今日记录为准（与 popup 单签同一契约），列表经 useStorageItem 自动刷新
-      const record = (await checkinResultsItem.getValue())[accountId];
-      if (isCheckedToday(record, today)) toast(`${name} ${record.status === "already_checked" ? "今天已签到" : "重试成功"}`);
-      else toast(`${name} 重试后仍未成功${record?.message ? `：${record.message}` : ""}`, "err");
+      const current = (await accountsItem.getValue()).find((a) => a.id === accountId);
+      const record = current && currentCheckinRecord(current, (await checkinResultsItem.getValue())[accountId]);
+      if (isCheckedToday(record, today)) toast(`${name} 今天已签到`);
+      else toast(`${name} ${record?.message || "未完成签到，请检查账号设置"}`, "err");
     } finally {
       setRetryingId(null);
     }
@@ -104,7 +105,7 @@ export default function CheckinPage() {
 
   const today = localDayString();
   const todayRows = (accounts ?? [])
-    .map((a) => ({ account: a, record: results?.[a.id] }))
+    .map((a) => ({ account: a, record: currentCheckinRecord(a, results?.[a.id]) }))
     .filter((r) => r.record?.date === today)
     .sort((a, b) => b.record!.at - a.record!.at);
   const failedCount = todayRows.filter((r) => r.record!.status === "failed").length;
@@ -170,8 +171,11 @@ export default function CheckinPage() {
           <Toggle
             checked={settings.retryEnabled}
             onChange={(v) => setSettings({ ...settings, retryEnabled: v })}
-            label="失败后重试（30 分钟后，每账号每日最多 3 次尝试）"
+            label="临时故障自动重试（至少间隔 30 分钟，每日最多重试 2 次）"
           />
+          <p className="text-[11px] leading-snug text-ink-faint">
+            限流时遵守站点等待时间；登录失效、权限不足、不支持签到和结果待确认时暂停自动重试。
+          </p>
           <Toggle
             checked={settings.turnstileAssist ?? true}
             onChange={(v) => setSettings({ ...settings, turnstileAssist: v })}
@@ -270,8 +274,8 @@ export default function CheckinPage() {
               >
                 <span className="readout shrink-0 text-[11px] text-ink-faint">{fmtClock(record!.at)}</span>
                 <span className="flex-1 truncate">{account.name}</span>
-                <Badge tone={STATUS_LABELS[record!.status].tone}>
-                  {STATUS_LABELS[record!.status].text}
+                <Badge tone={record!.uncertain ? "amber" : STATUS_LABELS[record!.status].tone}>
+                  {record!.uncertain ? "待确认" : STATUS_LABELS[record!.status].text}
                 </Badge>
                 <span className="max-w-[38%] truncate text-[11px] text-ink-faint" title={record!.message}>
                   {record!.message || ""}
@@ -280,10 +284,13 @@ export default function CheckinPage() {
                   <>
                     <Button
                       size="sm"
-                      disabled={retryingId !== null}
+                      disabled={retryingId !== null || !canCheckin(account)}
                       onClick={() => void retryOne(account.id, account.name)}
                     >
-                      {retryingId === account.id ? <Spinner /> : <><RotateCcw size={12} /> 重试</>}
+                      {retryingId === account.id ? <Spinner /> : <><RotateCcw size={12} /> {
+                        record!.uncertain ? "核对状态" :
+                          record!.reason === "unsupported" || record!.reason === "disabled" ? "重新检测" : "重试"
+                      }</>}
                     </Button>
                     <Button
                       size="sm"

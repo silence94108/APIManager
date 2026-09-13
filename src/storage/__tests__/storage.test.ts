@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import type { AccountDraft } from "../accounts";
+import { checkinContext, isCheckedToday } from "@/checkin/helpers";
 import { accountsItem, checkinResultsItem, groupsItem, modelTestSettingsItem, tagsItem } from "../items";
 import { deleteAccount, patchAccount, saveAccount } from "../accounts";
 import {
@@ -51,6 +52,20 @@ describe("accounts CRUD", () => {
     expect(all).toHaveLength(1);
     expect(all[0].name).toBe("更新版");
     expect(all[0].createdAt).toBe(created.createdAt);
+  });
+
+  it("编辑站点身份时绑定旧签到记录，旧成功和能力不会归给新用户", async () => {
+    const original = await saveAccount(draft());
+    const date = "2026-09-13";
+    await checkinResultsItem.setValue({ [original.id]: { date, at: 1, status: "success" } });
+    await patchAccount(original.id, {
+      checkinCapability: { state: "unsupported", at: 1, context: checkinContext(original) },
+    });
+    const updated = await saveAccount({ ...draft({ userId: "99" }), id: original.id });
+    const record = (await checkinResultsItem.getValue())[original.id];
+    expect(record.context).toBe(checkinContext(original));
+    expect(isCheckedToday(record, date, updated)).toBe(false);
+    expect(updated.checkinCapability).toBeUndefined();
   });
 
   it("删除账号连带清理签到记录与手填 key，其他账号的不受影响", async () => {

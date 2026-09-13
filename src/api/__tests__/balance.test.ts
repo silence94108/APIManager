@@ -20,7 +20,9 @@ beforeEach(async () => {
     if (String(url).includes("/api/log/self/stat")) return new Promise(() => {});
     const body = String(url).endsWith("/api/user/self")
       ? { success: true, data: { id: 12, quota: 1000000, used_quota: 500000 } }
-      : { success: true, message: "签到成功" };
+      : String(url).includes("/api/user/checkin?month=")
+        ? { success: true, data: { stats: { checked_in_today: false } } }
+        : { success: true, message: "签到成功" };
     return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
   });
   vi.stubGlobal("fetch", fetchMock);

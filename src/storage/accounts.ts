@@ -1,4 +1,5 @@
 import type { Account } from "@/types";
+import { checkinContext } from "@/checkin/helpers";
 import { accountsItem, checkinResultsItem, modelTestSettingsItem } from "./items";
 
 export type AccountDraft = Omit<Account, "id" | "createdAt" | "updatedAt"> & {
@@ -17,6 +18,7 @@ export async function saveAccount(draft: AccountDraft): Promise<Account> {
 
   if (existing) {
     const updated: Account = { ...existing, ...draft, id: existing.id, updatedAt: now };
+    await bindPreviousCheckinIdentity(existing, updated);
     await accountsItem.setValue(accounts.map((a) => (a.id === updated.id ? updated : a)));
     return updated;
   }
@@ -39,8 +41,22 @@ export async function patchAccount(
   const target = accounts.find((a) => a.id === id);
   if (!target) return undefined;
   const updated: Account = { ...target, ...patch, id, updatedAt: Date.now() };
+  await bindPreviousCheckinIdentity(target, updated);
   await accountsItem.setValue(accounts.map((a) => (a.id === id ? updated : a)));
   return updated;
+}
+
+async function bindPreviousCheckinIdentity(previous: Account, next: Account): Promise<void> {
+  if (checkinContext(previous) === checkinContext(next)) return;
+  next.checkinCapability = undefined;
+  const results = await checkinResultsItem.getValue();
+  const record = results[previous.id];
+  if (record && !record.context) {
+    await checkinResultsItem.setValue({
+      ...results,
+      [previous.id]: { ...record, context: checkinContext(previous) },
+    });
+  }
 }
 
 /** 删除账号并连带清理孤儿数据：签到记录、模型测试记忆的手填 key */

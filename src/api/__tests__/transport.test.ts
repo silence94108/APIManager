@@ -128,7 +128,7 @@ describe("siteFetch 来源限制与 HTML 页面回退", () => {
     }));
   });
 
-  it("页面内仍返回登录 HTML 时保留失败，只回退一次", async () => {
+  it("签到提交返回登录 HTML 时不重发，交给签到流程只读复核", async () => {
     account.sessionAuth = undefined;
     fetchMock.mockResolvedValueOnce(new Response("<html>login</html>", { headers: { "Content-Type": "text/html" } }));
     pageFetchMock.mockResolvedValueOnce(new Response("<html>login</html>", { headers: { "Content-Type": "text/html" } }));
@@ -136,7 +136,7 @@ describe("siteFetch 来源限制与 HTML 页面回退", () => {
     await expect(siteFetch(account, "/api/user/checkin", { method: "POST" })).rejects.toThrow(/登录或完成验证/);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(pageFetchMock).toHaveBeenCalledTimes(1);
+    expect(pageFetchMock).not.toHaveBeenCalled();
   });
 
   it("200 验证页在页面重试后仍存在时归待验证，不伪报签到成功", async () => {
@@ -419,5 +419,81 @@ describe("siteFetch 请求超时", () => {
     await result;
 
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("签到错误的等待时间与来源", () => {
+  it("POST 页面回退超时不能还原为待验证而再次点击", async () => {
+    account.sessionAuth = undefined;
+    const { PageFetchError } = await import("../pageFetch");
+    fetchMock.mockResolvedValueOnce(new Response("challenge", {
+      status: 403, headers: { "cf-mitigated": "challenge", "Content-Type": "text/html" },
+    }));
+    pageFetchMock.mockRejectedValueOnce(new PageFetchError(0, "页面提交响应超时"));
+    await expect(siteFetch(account, "/api/user/checkin", { method: "POST" })).rejects.toMatchObject({
+      name: "ApiError", status: 0, message: "页面提交响应超时",
+    });
+    expect(pageFetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("普通只读 HTML 响应仍可回退页面查询", async () => {
+    account.sessionAuth = undefined;
+    fetchMock.mockResolvedValueOnce(new Response("<html>login</html>", { headers: { "Content-Type": "text/html" } }));
+    pageFetchMock.mockResolvedValueOnce(jsonResponse({ success: true }));
+    await expect(siteFetch(account, "/api/user/self")).resolves.toMatchObject({ success: true });
+    expect(pageFetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST 的普通 503 HTML 不通过页面再次提交", async () => {
+    account.sessionAuth = undefined;
+    fetchMock.mockResolvedValueOnce(new Response("<html>unavailable</html>", {
+      status: 503, headers: { "Content-Type": "text/html" },
+    }));
+    await expect(siteFetch(account, "/api/user/checkin", { method: "POST" })).rejects.toMatchObject({ status: 503 });
+    expect(pageFetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each(["120", "Sun, 13 Sep 2026 12:00:00 GMT"])("429 在读取响应体前保留 Retry-After：%s", async (header) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 8, 13, 10));
+    account.sessionAuth = undefined;
+    const response = new Response("rate limited", { status: 429, headers: { "Retry-After": header } });
+    const body = vi.spyOn(response, "text").mockImplementation(() => new Promise(() => {}));
+    fetchMock.mockResolvedValueOnce(response);
+    await expect(siteFetch(account, "/api/user/checkin", { method: "POST" })).rejects.toMatchObject({
+      status: 429,
+      retryAfterAt: header === "120" ? Date.now() + 120_000 : Date.UTC(2026, 8, 13, 12),
+      requestUrl: account.url + "/api/user/checkin",
+    });
+    expect(body).not.toHaveBeenCalled();
+    expect(pageFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("续期 404 的来源仍是刷新接口", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: "not found" }, 404));
+    await expect(siteFetch(account, "/api/user/checkin")).rejects.toMatchObject({
+      status: 404, requestUrl: account.url + "/api/user/auth/refresh", beforeRequest: true,
+    });
+  });
+
+  it("页面 Cookie 身份查询的错误保留来源，不能冒充签到接口失败", async () => {
+    account.sessionAuth = undefined;
+    const response = jsonResponse({ message: "not found" }, 404);
+    Object.defineProperty(response, "url", { value: account.url + "/api/user/self" });
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: false, message: "request origin is not allowed" }, 403));
+    pageFetchMock.mockResolvedValueOnce(response);
+    await expect(siteFetch(account, "/api/user/checkin")).rejects.toMatchObject({
+      status: 404, requestUrl: account.url + "/api/user/self",
+    });
+  });
+
+  it("可能自动签到的页面返回 401 时不再次开页", async () => {
+    account.sessionAuth!.accessExpiresAt = Date.now() / 1000 + 900;
+    pageFetchMock.mockResolvedValueOnce(jsonResponse({ message: "unauthorized" }, 401));
+    await expect(siteFetch(account, "/api/user/sign_in", {
+      method: "POST", freshPage: true, pageUrl: account.url + "/console/topup",
+    })).rejects.toMatchObject({ status: 401 });
+    expect(pageFetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

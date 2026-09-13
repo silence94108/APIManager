@@ -1,5 +1,5 @@
 import { useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
-import { isCheckedToday } from "@/checkin/helpers";
+import { currentCheckinRecord, isCheckedToday } from "@/checkin/helpers";
 import type { Account, CheckinResults } from "@/types";
 
 export function cn(...parts: Array<string | false | null | undefined>): string {
@@ -132,7 +132,7 @@ export function dotStatus(account: Account, results?: CheckinResults, today?: st
   if (account.disabled) return "disabled";
   if (account.tokenState === "expired") return "expired";
   if (results && today) {
-    const record = results[account.id];
+    const record = currentCheckinRecord(account, results[account.id]);
     if (isCheckedToday(record, today)) return "checked";
     if (record?.date === today && record.status === "failed") return "failed";
     if (record?.date === today && record.status === "needs_verification") return "verify";

@@ -7,10 +7,10 @@
 
 | 站点类型 | 签到 | 今日状态查询 | 鉴权 |
 |---|---|---|---|
-| new-api | `POST /api/user/checkin`，body `"{}"` | `GET /api/user/checkin?month=YYYY-MM` → `data.stats.checked_in_today` | `Authorization: Bearer <token>`；接口 404/500 = 站点不支持签到 |
+| new-api | `POST /api/user/checkin`，body `"{}"` | `GET /api/user/checkin?month=YYYY-MM` → `data.stats.checked_in_today` | `Authorization: Bearer <token>`；404/405 须确认来自签到接口且为有效响应，500 不代表不支持 |
 | veloera | `POST /api/user/check_in`（无 body） | `GET /api/user/check_in_status` → `data.can_check_in`（true=今天还能签） | Bearer |
 | anyrouter | `POST /api/user/sign_in`，body `"{}"`，加头 `X-Requested-With: XMLHttpRequest` | 无独立接口，靠签到响应判断 | **强制 Cookie**：`credentials:"include"` 复用浏览器登录态；**空 message = 已签** |
-| voapi-v2 | `POST /api/check_in`（无 body），提交后再 GET stats 确认 | `GET /api/check_in/stats` → `todaySigned` | **raw JWT（无 Bearer 前缀）**，会过期 |
+| voapi-v2 | `POST /api/check_in`（无 body），提交后再 GET stats 确认 | `GET /api/check_in/stats` → `data.todaySigned` | **raw JWT（无 Bearer 前缀）**，会过期 |
 
 voapi-v2 响应信封 `{code, data, msg}`：
 
@@ -40,7 +40,7 @@ anyrouter 响应 `{code, ret, success, message}`：`success:false` 优先按失�
 
 - **签到页路径**：new-api / veloera 默认主题 `/console/personal`（部分主题 `/profile`）；anyrouter `/console/topup`；voapi-v2 `/checkIn?_userMenuKey=checkIn`
 - **按钮定位**：候选 `button, a, [role="button"]`，文案匹配 `(签到|check\s*in|checkin)`（忽略大小写）、排除 `(已签到|already)`
-- **复核语义**：页面流程签成功后，后台重发签到 API 会返回"已签到"——以此确认辅助成功
+- **本项目复核语义（2026-09-13 更新）**：点击前核验页面登录身份并保存待确认记录；点击后只调用今日状态查询。已点击但未确认时停止，不重发签到 API、不尝试其他页面。无按钮时才继续下一候选；跨域自定义地址仅供用户手动打开。
 
 ## 通用请求头
 
@@ -62,7 +62,7 @@ anyrouter 响应 `{code, ret, success, message}`：`success:false` 优先按失�
 
 2026-09-13 对照上游 v3.61.0 的[当前浏览器身份核验修复](https://github.com/qixing-jk/all-api-hub/pull/1412)：缓存仅作为线索，旧版 Cookie 身份通过 `/api/user/self` 核验，VoAPI 页面 JWT 通过 `/api/user/info` 核验；缓存或补取的 Token 要与已确认用户匹配。识别中登录态或页面变化、请求超时、身份不明时丢弃结果；未核验的新 Token 不覆盖已有凭据。此处仅补充账号识别结论，全文其他协议的调研基准仍为开头所列版本。
 
-用户实测补充：Aether API（`https://api.abnt.it/`）在后台请求中返回 `request origin is not allowed`，账号识别的同源请求正常。扩展对这种来源拒绝，以及 AnyRouter 等站点返回的 HTML 登录/验证页，增加一次同源标签页请求回退；续期仍使用 `X-Auth-Session` 和 `new-api:auth-refresh` 锁，并校验返回的用户 ID 与会话 ID。Cookie 请求在页面内先通过账号接口核对用户，页面跳转到其他来源时停止；回退后仍为 HTML 或验证失败时保留失败/待验证状态。
+用户实测补充：Aether API（`https://api.abnt.it/`）在后台请求中返回 `request origin is not allowed`，账号识别的同源请求正常。扩展对这种来源拒绝和明确的验证拦截增加一次同源标签页请求回退，只读请求遇 HTML 也可回退；提交请求的普通 HTML 响应及页面回退超时均保留不确定性，交由签到流程只读复核。续期仍使用 `X-Auth-Session` 和 `new-api:auth-refresh` 锁，并校验返回的用户 ID 与会话 ID。Cookie 请求在页面内先通过账号接口核对用户，页面跳转到其他来源时停止。
 
 旧版 AnyRouter 的进一步实测：用户刷新控制台页面即可签到。该类型改为直接用同源页面请求，旧账号残留的 Bearer Token 不随 Cookie 发送；签到时临时加载签到页触发前端自动流程，随后请求 `/api/user/sign_in` 确认，不再查找签到按钮。优先使用账号的自定义同源签到地址，默认 `/console/topup`；不会刷新用户原有标签页。
 
@@ -70,11 +70,18 @@ anyrouter 响应 `{code, ret, success, message}`：`success:false` 优先按失�
 
 ## 调度语义（chrome.alarms）
 
+2026-09-13 对照上游 v3.61.0 的[签到能力与安全重试改进](https://github.com/qixing-jk/all-api-hub/pull/1402)，本项目独立实现以下策略。此次只补充账号识别、签到能力和重试结论，备份格式与其他站点协议仍以文首调研基准为准。
+
 - 双闹钟：每日 `checkin:daily` + 重试 `checkin:retry`
 - 每日窗口内**均匀随机取时刻**；`lastDailyRunDay`（本地 YYYY-MM-DD）保证每日至多一跑；`dailyAlarmTargetDay` 防休眠后陈旧闹钟误触发
 - `onInstalled` / `onStartup` 都要重排闹钟（Chrome 重启会清 alarms）
 - MV3 下重试等待必须用 alarm，不能 setTimeout（service worker 会被杀）
-- 是否已签以 provider 返回的 `already_checked` 为准，不信任缓存状态
+- New API / Veloera / VoAPI 先查后签，要求成功信封及布尔型今日状态；已签不 POST，缺失状态或查询失败不盲签。VoAPI 提交成功后仍须查询确认
+- 明确不支持或禁用签到的能力证据绑定站点、类型和用户并持久化，自动任务跳过，手动操作允许重新检测，不修改用户签到开关；认证刷新/身份接口失败、普通 HTML、500 均不能据此关闭签到能力
+- 只读阶段网络、超时、5xx 等临时故障，以及明确的 429 拒绝可有限重试；至少间隔 30 分钟，首轮后最多两次。认证、权限、验证、无效状态、业务拒绝与存储失败不自动重试
+- `Retry-After` 支持秒数和 HTTP 日期；每账号保存最早执行时刻，限流按来源共享。一轮只运行到期账号，其他账号继续等待；重试不跨日，但跨日仍须遵守未到期的站点限流
+- 签到写请求/页面自动签到开始前先落盘待确认记录。写请求网络错误、超时、5xx 或无效响应只做一次只读复核；仍未确认则当日只读，扩展重启与手动操作也不能重复提交
+- 签到结果绑定账号身份，编辑站点/用户后旧记录不作为新身份的成功；兼容旧版无 context 的成功记录，但不把旧失败默认加入重试
 
 ## all-api-hub 备份 JSON 格式（导入功能的输入契约）
 

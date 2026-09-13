@@ -9,7 +9,7 @@ import {
   TriangleAlert,
   Zap,
 } from "lucide-react";
-import { canCheckin, resolveCheckinPageUrl } from "@/checkin/helpers";
+import { canCheckin, currentCheckinRecord, resolveCheckinPageUrl } from "@/checkin/helpers";
 import { sendMessage } from "@/messaging/protocol";
 import { checkinResultsItem } from "@/storage/items";
 import { BALANCE_SITE_TYPES, type Account, type CheckinResults } from "@/types";
@@ -34,6 +34,9 @@ export default function AccountRow({
 
   const status = dotStatus(account, results, today);
   const eligible = canCheckin(account);
+  const currentRecord = currentCheckinRecord(account, results[account.id]);
+  const checkinAction = currentRecord?.uncertain ? "核对状态" :
+    currentRecord?.reason === "unsupported" || currentRecord?.reason === "disabled" ? "重新检测" : "签到";
   const hasBalance = BALANCE_SITE_TYPES.includes(account.siteType);
   const usageLine = formatUsageLine(account);
 
@@ -45,9 +48,8 @@ export default function AccountRow({
         toast(res.error, "err");
         return;
       }
-      // 不用返回的整体 summary 判断——若撞上正在跑的全量签到会复用其结果；
-      // 以存储里本账号的今日记录为准
-      const record = (await checkinResultsItem.getValue())[account.id];
+      // 以绑定当前身份的本账号今日记录为准。
+      const record = currentCheckinRecord(account, (await checkinResultsItem.getValue())[account.id]);
       if (record?.date !== today) {
         toast(`${account.name} 被跳过（未启用签到或 Token 过期）`, "err");
         return;
@@ -104,7 +106,7 @@ export default function AccountRow({
         ) : (
           <>
             {eligible && (
-              <RowAction title="签到" onClick={checkin}>
+              <RowAction title={checkinAction} onClick={checkin}>
                 <Zap size={13} />
               </RowAction>
             )}
@@ -136,9 +138,9 @@ export default function AccountRow({
 
       {/* 非 hover 态：余额/用量常显；失败/待验证在余额左侧加带色图标钮——问题账号不藏 hover，也不挡数字 */}
       <div className="flex shrink-0 items-center gap-1.5 group-hover:hidden">
-        {status === "failed" && !busy && (
+        {status === "failed" && eligible && !busy && (
           <button
-            title={`签到失败${results[account.id]?.message ? `：${results[account.id].message}` : ""}，点击重试`}
+            title={`${currentRecord?.message || "签到失败"}，点击${checkinAction === "签到" ? "重试" : checkinAction}`}
             onClick={checkin}
             className="rounded border border-signal/40 p-1 text-signal transition hover:bg-carbon"
           >

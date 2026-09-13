@@ -48,6 +48,11 @@ export const checkinResultsItem = storage.defineItem<CheckinResults>(
   { fallback: {} },
 );
 
+/** 站点限流按来源共享，跨天或修改账号后仍须遵守服务端等待时间。 */
+export const checkinCooldownsItem = storage.defineItem<Record<string, number>>("local:checkinCooldowns", {
+  fallback: {},
+});
+
 export const vaultMetaItem = storage.defineItem<VaultMeta | null>("local:vaultMeta", {
   fallback: null,
 });

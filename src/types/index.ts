@@ -101,6 +101,13 @@ export interface Account {
   disabled: boolean;
   /** 该账号是否参与（自动+批量）签到 */
   checkinEnabled: boolean;
+  /** 站点实际返回的签到能力；不改动用户的签到开关。 */
+  checkinCapability?: {
+    state: "supported" | "unsupported" | "disabled";
+    context: string;
+    at: number;
+    message?: string;
+  };
   /** voapi-v2 JWT 过期标记；expired 的账号签到时跳过 */
   tokenState?: "ok" | "expired";
   /** 自定义签到页链接（完整 URL 或以 / 开头的路径）——留空用站点类型默认路径 */
@@ -129,16 +136,27 @@ export interface Tag {
 
 export type CheckinStatus = "success" | "already_checked" | "failed" | "needs_verification";
 
+export type CheckinFailureReason = "authentication" | "permission" | "unsupported" | "disabled" |
+  "network" | "timeout" | "rate_limited" | "server" | "invalid_response" | "rejected" | "uncertain" | "storage";
+
 export interface ProviderResult {
   status: CheckinStatus;
   message?: string;
+  reason?: CheckinFailureReason;
+  /** 只有明确为 true 的失败才能进入自动重试队列。 */
+  retryable?: boolean;
+  /** Retry-After 换算后的最早重试时刻（毫秒）。 */
+  retryAt?: number;
+  /** 已开始提交但结果未确认；后续只能查询状态。 */
+  uncertain?: boolean;
+  capability?: NonNullable<Account["checkinCapability"]>["state"];
 }
 
-export interface AccountCheckinRecord {
+export interface AccountCheckinRecord extends Omit<ProviderResult, "capability"> {
   /** 本地 YYYY-MM-DD——判"今日已签"的唯一依据 */
   date: string;
-  status: CheckinStatus;
-  message?: string;
+  /** 绑定站点、类型和用户，防止编辑账号后误用旧结果。 */
+  context?: string;
   at: number;
 }
 
@@ -155,8 +173,10 @@ export interface RunSummary {
 
 export interface RunOutcome {
   summary: RunSummary;
-  /** 本轮 failed 的账号 id（重试调度的输入） */
+  /** 全部失败账号，保留用于汇总与通知。 */
   failedIds: string[];
+  /** 自动重试只接受这里明确列出的账号。旧结果缺省为空。 */
+  retryableIds?: string[];
 }
 
 export interface CheckinSettings {
@@ -185,6 +205,7 @@ export interface SchedulerState {
     day: string;
     pendingIds: string[];
     attempts: Record<string, number>;
+    notBefore?: Record<string, number>;
   };
   lastRun?: {
     at: number;
