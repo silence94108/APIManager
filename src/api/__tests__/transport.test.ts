@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Account } from "@/types";
 
+const pageFetchMock = vi.hoisted(() => vi.fn());
+vi.mock("../pageFetch", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../pageFetch")>(),
+  fetchFromSitePage: pageFetchMock,
+}));
+
 const fetchMock = vi.fn<typeof fetch>();
 let siteFetch: typeof import("../transport").siteFetch;
 let account: Account;
@@ -28,6 +34,9 @@ function authResponse() {
 beforeEach(async () => {
   vi.resetModules();
   ({ siteFetch } = await import("../transport"));
+  const { PageFetchError } = await import("../pageFetch");
+  pageFetchMock.mockReset();
+  pageFetchMock.mockRejectedValue(new PageFetchError(0, "页面不可用"));
   fetchMock.mockReset();
   fetchMock.mockImplementation(async () => jsonResponse({ success: true, data: { quota: 500000 } }));
   vi.stubGlobal("fetch", fetchMock);
@@ -47,6 +56,117 @@ beforeEach(async () => {
     createdAt: 1,
     updatedAt: 1,
   };
+});
+
+describe("siteFetch 来源限制与 HTML 页面回退", () => {
+  it.each([403, 200])("签到收到 %s 来源拒绝时在同源页面重试，保留认证和请求体", async (status) => {
+    account.sessionAuth = undefined;
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: false, message: "request origin is not allowed" }, status));
+    pageFetchMock.mockResolvedValueOnce(jsonResponse({ success: true, message: "签到成功" }));
+
+    await expect(siteFetch(account, "/api/user/checkin", { method: "POST", body: "{}" })).resolves.toMatchObject({ success: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(pageFetchMock).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      url: account.url + "/api/user/checkin",
+      method: "POST",
+      body: "{}",
+      credentials: "omit",
+      headers: expect.objectContaining({ authorization: "Bearer original-token", "new-api-user": "12" }),
+    }));
+  });
+
+  it("Aether 会话续期来源受限时通过页面恢复原会话，再请求余额", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: false, message: "request origin is not allowed" }, 403));
+    pageFetchMock.mockResolvedValueOnce(jsonResponse(authResponse()));
+
+    await expect(siteFetch(account, "/api/user/self")).resolves.toMatchObject({ success: true });
+
+    expect(pageFetchMock).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      url: account.url + "/api/user/auth/refresh",
+      method: "POST",
+      refreshSession: true,
+      credentials: "include",
+      headers: expect.objectContaining({ "x-auth-session": "test-session" }),
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, account.url + "/api/user/self", expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: "Bearer fresh-access-token" }),
+    }));
+    expect(account.accessToken).toBe("original-token");
+  });
+
+  it("页面续期也校验账号归属，不使用另一账号的访问令牌", async () => {
+    const response = authResponse();
+    response.data.user.id = 99;
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: false, message: "request origin is not allowed" }, 403));
+    pageFetchMock.mockResolvedValueOnce(jsonResponse(response));
+
+    await expect(siteFetch(account, "/api/user/self")).rejects.toThrow(/已变更/);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(account.accessToken).toBe("original-token");
+  });
+
+  it("旧版 AnyRouter 直接使用同源 Cookie，不先等待后台请求", async () => {
+    account.siteType = "anyrouter";
+    account.authType = "cookie";
+    account.sessionAuth = undefined;
+    account.accessToken = undefined;
+    fetchMock.mockResolvedValueOnce(new Response("<html>checking browser</html>", { headers: { "Content-Type": "text/html" } }));
+    pageFetchMock.mockResolvedValueOnce(jsonResponse({ success: true, message: "签到成功" }));
+
+    await expect(siteFetch(account, "/api/user/sign_in", {
+      method: "POST", body: "{}", headers: { "X-Requested-With": "XMLHttpRequest" },
+    })).resolves.toMatchObject({ success: true });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(pageFetchMock).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      url: account.url + "/api/user/sign_in",
+      credentials: "include",
+      verifyUser: { id: "12", endpoint: "/api/user/self" },
+      headers: expect.objectContaining({ "x-requested-with": "XMLHttpRequest" }),
+    }));
+  });
+
+  it("页面内仍返回登录 HTML 时保留失败，只回退一次", async () => {
+    account.sessionAuth = undefined;
+    fetchMock.mockResolvedValueOnce(new Response("<html>login</html>", { headers: { "Content-Type": "text/html" } }));
+    pageFetchMock.mockResolvedValueOnce(new Response("<html>login</html>", { headers: { "Content-Type": "text/html" } }));
+
+    await expect(siteFetch(account, "/api/user/checkin", { method: "POST" })).rejects.toThrow(/登录或完成验证/);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(pageFetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("200 验证页在页面重试后仍存在时归待验证，不伪报签到成功", async () => {
+    account.sessionAuth = undefined;
+    const html = '<html><script src="/cdn-cgi/challenge-platform/test"></script></html>';
+    fetchMock.mockResolvedValueOnce(new Response(html, { headers: { "Content-Type": "text/html" } }));
+    pageFetchMock.mockResolvedValueOnce(new Response(html, { headers: { "Content-Type": "text/html" } }));
+
+    await expect(siteFetch(account, "/api/user/checkin", { method: "POST" })).rejects.toMatchObject({ name: "VerificationRequiredError" });
+
+    expect(pageFetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([404, 500])("普通 %s HTML 错误不打开页面或重复提交", async (status) => {
+    account.sessionAuth = undefined;
+    fetchMock.mockResolvedValueOnce(new Response("<html>error</html>", { status, headers: { "Content-Type": "text/html" } }));
+
+    await expect(siteFetch(account, "/api/user/checkin", { method: "POST" })).rejects.toMatchObject({ status });
+
+    expect(pageFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("普通权限拒绝不会通过页面改换认证身份", async () => {
+    account.sessionAuth = undefined;
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: false, message: "permission denied" }, 403));
+
+    await expect(siteFetch(account, "/api/user/checkin", { method: "POST" })).rejects.toThrow("permission denied");
+
+    expect(pageFetchMock).not.toHaveBeenCalled();
+  });
 });
 
 afterEach(() => {
@@ -216,7 +336,7 @@ describe("siteFetch 旧版认证兼容", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("AnyRouter Cookie 与 VoAPI raw JWT 保持原请求方式", async () => {
+  it("其他站点的 Cookie 与 VoAPI raw JWT 保持原请求方式", async () => {
     account.sessionAuth = undefined;
     account.authType = "cookie";
     account.accessToken = undefined;
@@ -228,5 +348,76 @@ describe("siteFetch 旧版认证兼容", () => {
     account.accessToken = "voapi-jwt";
     await siteFetch(account, "/api/user/info", { rawToken: true });
     expect(fetchMock.mock.calls[1][1]?.headers).toHaveProperty("Authorization", "voapi-jwt");
+  });
+
+  it("导入的旧版 AnyRouter 仍带长期 Token 时也只使用当前 Cookie", async () => {
+    account.siteType = "anyrouter";
+    account.sessionAuth = undefined;
+    pageFetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: { id: 12, quota: 500000 } }));
+
+    await expect(siteFetch(account, "/api/user/self")).resolves.toMatchObject({ success: true });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    const request = pageFetchMock.mock.calls[0][0];
+    expect(request.credentials).toBe("include");
+    expect(request.headers).not.toHaveProperty("authorization");
+    expect(request.verifyUser).toEqual({ id: "12", endpoint: "/api/user/self" });
+  });
+
+  it("AnyRouter 签到页面与刷新要求会传递到页面请求", async () => {
+    account.siteType = "anyrouter";
+    account.sessionAuth = undefined;
+    pageFetchMock.mockResolvedValueOnce(jsonResponse({ success: true, message: "" }));
+
+    await siteFetch(account, "/api/user/sign_in", {
+      method: "POST", body: "{}", pageUrl: account.url + "/console/topup", freshPage: true,
+    });
+
+    expect(pageFetchMock).toHaveBeenCalledWith(expect.objectContaining({
+      pageUrl: account.url + "/console/topup", freshPage: true,
+    }));
+  });
+});
+
+describe("siteFetch 请求超时", () => {
+  it("余额接口不响应取消时仍按时退出，下一次刷新可以继续", async () => {
+    vi.useFakeTimers();
+    account.sessionAuth = undefined;
+    fetchMock.mockImplementationOnce(() => new Promise(() => {}));
+
+    const result = expect(siteFetch(account, "/api/user/self")).rejects.toMatchObject({ status: 0, code: "REQUEST_TIMEOUT" });
+    await vi.advanceTimersByTimeAsync(15000);
+    await result;
+
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(pageFetchMock).not.toHaveBeenCalled();
+    await expect(siteFetch(account, "/api/user/self")).resolves.toMatchObject({ success: true });
+  });
+
+  it("响应头已收到但 JSON 响应体卡住，也会结束等待", async () => {
+    vi.useFakeTimers();
+    account.sessionAuth = undefined;
+    const response = jsonResponse({ success: true });
+    vi.spyOn(response, "json").mockImplementation(() => new Promise(() => {}));
+    fetchMock.mockResolvedValueOnce(response);
+
+    const result = expect(siteFetch(account, "/api/user/self")).rejects.toMatchObject({ code: "REQUEST_TIMEOUT" });
+    await vi.advanceTimersByTimeAsync(15000);
+    await result;
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("可选统计使用较短超时，及时释放余额刷新", async () => {
+    vi.useFakeTimers();
+    account.sessionAuth = undefined;
+    fetchMock.mockImplementationOnce(() => new Promise(() => {}));
+
+    const result = expect(siteFetch(account, "/api/log/self/stat", { timeoutMs: 5000 })).rejects.toMatchObject({ code: "REQUEST_TIMEOUT" });
+    await vi.advanceTimersByTimeAsync(5000);
+    await result;
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
