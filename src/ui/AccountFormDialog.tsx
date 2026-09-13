@@ -41,6 +41,8 @@ export interface FormState {
   siteType: SiteType;
   userId: string;
   accessToken: string;
+  /** 新版 New API 会话随识别结果透传；手工修改认证信息时清除。 */
+  sessionAuth?: Account["sessionAuth"];
   username: string;
   groupId: string;
   tagIds: string[];
@@ -93,6 +95,7 @@ export function toForm(account: Account): FormState {
     siteType: account.siteType,
     userId: account.userId,
     accessToken: account.accessToken ?? "",
+    sessionAuth: account.sessionAuth,
     username: account.username ?? "",
     groupId: account.groupId ?? "",
     tagIds: account.tagIds,
@@ -134,6 +137,7 @@ export function fromDetected(d: DetectedAccount): FormState {
     siteType: d.siteType,
     userId: d.userId,
     accessToken: d.accessToken ?? "",
+    sessionAuth: d.sessionAuth,
     username: d.username ?? "",
     faviconUrl: d.faviconUrl,
   };
@@ -150,6 +154,7 @@ export function mergeDetectedIntoAccount(existing: Account, d: DetectedAccount):
     ...base,
     siteType: d.siteType,
     accessToken: d.accessToken ?? base.accessToken,
+    sessionAuth: d.accessToken ? d.sessionAuth : base.sessionAuth,
     username: d.username?.trim() || base.username,
     faviconUrl: d.faviconUrl ?? base.faviconUrl,
   };
@@ -318,9 +323,10 @@ export function AccountFormDialog({
       name: form.name.trim(),
       url: normalizeOrigin(form.url),
       siteType: form.siteType,
-      authType: isAnyrouter ? "cookie" : "token",
+      authType: isAnyrouter && !form.sessionAuth ? "cookie" : "token",
       userId: form.userId.trim(),
       accessToken: form.accessToken.trim() || undefined,
+      sessionAuth: form.sessionAuth,
       username: form.username.trim() || undefined,
       faviconUrl: form.faviconUrl,
       credential,
@@ -363,7 +369,7 @@ export function AccountFormDialog({
         <Field label="站点 URL">
           <Input
             value={form.url}
-            onChange={(e) => set({ url: e.target.value })}
+            onChange={(e) => set({ url: e.target.value, sessionAuth: undefined })}
             onBlur={() => isValidSiteUrl(form.url) && set({ url: normalizeOrigin(form.url) })}
             placeholder="https://api.example.com"
           />
@@ -373,7 +379,7 @@ export function AccountFormDialog({
         <Field label="站点类型">
           <Select
             value={form.siteType}
-            onChange={(e) => set({ siteType: e.target.value as SiteType })}
+            onChange={(e) => set({ siteType: e.target.value as SiteType, sessionAuth: undefined })}
           >
             {SITE_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -394,7 +400,7 @@ export function AccountFormDialog({
                   : "站点「个人设置」页的数字 ID"
           }
         >
-          <Input value={form.userId} onChange={(e) => set({ userId: e.target.value })} placeholder="1234" />
+          <Input value={form.userId} onChange={(e) => set({ userId: e.target.value, sessionAuth: undefined })} placeholder="1234" />
           {errors.userId && <span className="text-[11px] text-signal">{errors.userId}</span>}
         </Field>
 
@@ -402,20 +408,22 @@ export function AccountFormDialog({
           <Field
             label={requiresToken ? "Access Token" : "Access Token（选填）"}
             hint={
-              isAnyrouter
-                ? "AnyRouter 签到复用浏览器 Cookie，请保持该站在浏览器中已登录"
-                : isSub2api
-                  ? "Sub2API 的访问令牌，用于查询余额"
-                  : isOther
-                    ? "其他类型仅作记录，可留空"
-                    : form.siteType === "voapi-v2"
-                      ? "VoAPI v2 使用页面 JWT（会过期，过期后在此更新）"
-                      : "站点「个人设置」生成的访问令牌"
+              form.sessionAuth
+                ? "已关联浏览器登录会话，令牌会自动续期；请保持该站登录，退出或切换账号后重新识别"
+                : isAnyrouter
+                  ? "AnyRouter 签到复用浏览器 Cookie，请保持该站在浏览器中已登录"
+                  : isSub2api
+                    ? "Sub2API 的访问令牌，用于查询余额"
+                    : isOther
+                      ? "其他类型仅作记录，可留空"
+                      : form.siteType === "voapi-v2"
+                        ? "VoAPI v2 使用页面 JWT（会过期，过期后在此更新）"
+                        : "站点「个人设置」生成的访问令牌"
             }
           >
             <Input
               value={form.accessToken}
-              onChange={(e) => set({ accessToken: e.target.value })}
+              onChange={(e) => set({ accessToken: e.target.value, sessionAuth: undefined })}
               placeholder={requiresToken ? "sk-… / eyJ…" : "留空即可"}
               type="password"
               autoComplete="off"

@@ -6,8 +6,8 @@ import type { DetectResult } from "./types";
 /**
  * 识别当前活动标签页的中转站账号。
  *
- * 流程：取当前 tab → 注入 extractSessionFromPage 读 localStorage → 判站点类型 → 组装草稿。
- * 全程只读当前 tab，读不到就返回失败原因（不做后台临时窗口/API 三级降级——精简版转手动录入）。
+ * 流程：取当前 tab → 注入 extractSessionFromPage 读取缓存并用同源登录态补全 → 判站点类型 → 组装草稿。
+ * 会话提取在当前 tab 内完成，读不到就返回失败原因，不另开临时窗口。
  */
 export async function detectCurrentSite(): Promise<DetectResult> {
   let tab: { id?: number; url?: string; title?: string } | undefined;
@@ -62,6 +62,7 @@ export async function detectCurrentSite(): Promise<DetectResult> {
       siteType,
       userId: session.userId,
       accessToken: session.accessToken,
+      sessionAuth: session.sessionAuth,
       username: session.username,
     },
   };

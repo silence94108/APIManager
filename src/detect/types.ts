@@ -1,4 +1,4 @@
-import type { SiteType } from "@/types";
+import type { NewApiSessionAuth, SiteType } from "@/types";
 
 /** 识别当前站点后，用于预填「添加账号」表单的草稿。 */
 export interface DetectedAccount {
@@ -13,6 +13,7 @@ export interface DetectedAccount {
   userId: string;
   /** Bearer token / voapi raw JWT；读不到则 undefined */
   accessToken?: string;
+  sessionAuth?: NewApiSessionAuth;
   username?: string;
 }
 
