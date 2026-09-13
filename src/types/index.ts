@@ -29,6 +29,13 @@ export const MODEL_TEST_SITE_TYPES: SiteType[] = ["new-api", "veloera", "anyrout
 /** anyrouter 固定 cookie（复用浏览器登录态），其余默认 token */
 export type AuthType = "token" | "cookie";
 
+/** 新版 New API 的浏览器会话；刷新凭据由站点 HttpOnly Cookie 保管，不复制进扩展。 */
+export interface NewApiSessionAuth {
+  sessionId: string;
+  /** 访问令牌到期时间，Unix 秒 */
+  accessExpiresAt: number;
+}
+
 export const OAUTH_PROVIDERS = ["linuxdo", "github", "other"] as const;
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 
@@ -76,6 +83,8 @@ export interface Account {
   userId: string;
   /** Bearer token / voapi raw JWT；cookie 模式可空 */
   accessToken?: string;
+  /** 新版 New API 的短期令牌需要用同一浏览器会话续期；旧版长期 Token 无此字段 */
+  sessionAuth?: NewApiSessionAuth;
   /** 预留：导入 all-api-hub cookieAuth.sessionCookie 时保存，当前不用于请求 */
   sessionCookie?: string;
   username?: string;
