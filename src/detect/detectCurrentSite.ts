@@ -1,4 +1,5 @@
 import { normalizeOrigin } from "@/utils/url";
+import { withRequestTimeout } from "@/api/requestTimeout";
 import { detectSiteType } from "./detectSiteType";
 import { extractSessionFromPage, type PageSession } from "./extractSession";
 import type { DetectResult } from "./types";
@@ -37,18 +38,29 @@ export async function detectCurrentSite(): Promise<DetectResult> {
 
   let session: PageSession | null = null;
   try {
-    const [result] = await browser.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: extractSessionFromPage,
-    });
-    session = result?.result ?? null;
-  } catch {
+    const tabId = tab.id;
+    session = await withRequestTimeout((async () => {
+      const [result] = await browser.scripting.executeScript({
+        target: { tabId },
+        func: extractSessionFromPage,
+        args: [origin, Date.now() + 8000],
+      });
+      const currentTab = await browser.tabs.get(tabId);
+      if (!currentTab.url || normalizeOrigin(currentTab.url) !== origin) {
+        throw new Error("页面已跳转，请在目标站点重新识别账号");
+      }
+      return result?.result ?? null;
+    })(), 9000, () => new Error("读取当前账号超时，请回到站点页面后重试"));
+  } catch (error) {
+    if (error instanceof Error && /^(页面已跳转|读取当前账号超时)/.test(error.message)) {
+      return { ok: false, reason: error.message };
+    }
     // 常见于 chrome:// 等受限页面、或页面禁止注入
     return { ok: false, reason: "无法读取此页面（可能是浏览器内置页或受保护站点）" };
   }
 
   if (!session) {
-    return { ok: false, reason: "未在当前页面识别到账号——请确认已登录该中转站" };
+    return { ok: false, reason: "未能确认当前登录账号，请在站点登录后重新识别；已有账号凭据不会被修改" };
   }
 
   const siteType = detectSiteType(session.hasVoapiStore, tab.title ?? "", hostname);

@@ -60,4 +60,8 @@ describe("账号表单的会话信息", () => {
       sessionAuth,
     });
   });
+
+  it.each([{ userId: "99" }, { url: "https://other.example.com" }])("另一账号的识别结果不能覆盖已有凭据：%j", (patch) => {
+    expect(mergeDetectedIntoAccount(existing, { ...detected, ...patch })).toEqual(toForm(existing));
+  });
 });

@@ -60,6 +60,8 @@ anyrouter 响应 `{code, ret, success, message}`：`success:false` 优先按失�
 - 站点用同源 Web Lock `new-api:auth-refresh` 协调续期。409 `AUTH_REFRESH_RACE` 可短暂重试；401 或 `AUTH_SESSION_MISMATCH` 要重新登录/识别，扩展不能放弃原会话约束并自动改用其他账号。
 - 扩展以 `Account.sessionAuth` 保存会话 ID 和令牌到期时间，续期令牌只缓存在当前扩展运行环境中；旧版长期 Token 不进入该刷新流程。
 
+2026-09-13 对照上游 v3.61.0 的[当前浏览器身份核验修复](https://github.com/qixing-jk/all-api-hub/pull/1412)：缓存仅作为线索，旧版 Cookie 身份通过 `/api/user/self` 核验，VoAPI 页面 JWT 通过 `/api/user/info` 核验；缓存或补取的 Token 要与已确认用户匹配。识别中登录态或页面变化、请求超时、身份不明时丢弃结果；未核验的新 Token 不覆盖已有凭据。此处仅补充账号识别结论，全文其他协议的调研基准仍为开头所列版本。
+
 用户实测补充：Aether API（`https://api.abnt.it/`）在后台请求中返回 `request origin is not allowed`，账号识别的同源请求正常。扩展对这种来源拒绝，以及 AnyRouter 等站点返回的 HTML 登录/验证页，增加一次同源标签页请求回退；续期仍使用 `X-Auth-Session` 和 `new-api:auth-refresh` 锁，并校验返回的用户 ID 与会话 ID。Cookie 请求在页面内先通过账号接口核对用户，页面跳转到其他来源时停止；回退后仍为 HTML 或验证失败时保留失败/待验证状态。
 
 旧版 AnyRouter 的进一步实测：用户刷新控制台页面即可签到。该类型改为直接用同源页面请求，旧账号残留的 Bearer Token 不随 Cookie 发送；签到时临时加载签到页触发前端自动流程，随后请求 `/api/user/sign_in` 确认，不再查找签到按钮。优先使用账号的自定义同源签到地址，默认 `/console/topup`；不会刷新用户原有标签页。

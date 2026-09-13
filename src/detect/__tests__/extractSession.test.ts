@@ -116,8 +116,9 @@ afterEach(() => {
 });
 
 describe("extractSessionFromPage", () => {
-  it("保留旧版 localStorage.user 的账号和现有 Token", async () => {
+  it("服务端确认旧版账号后保留用户名和返回的 Token", async () => {
     local.set("user", JSON.stringify({ id: 12, username: "legacy", access_token: "old-token" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: { id: 12, access_token: "old-token" } }));
 
     expect(await extractSessionFromPage()).toEqual({
       userId: "12",
@@ -126,7 +127,8 @@ describe("extractSessionFromPage", () => {
       hasVoapiStore: false,
       faviconUrl: "https://api.example.com/favicon.ico",
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1]?.headers).not.toHaveProperty("Authorization");
   });
 
   it("从 sessionStorage.user 识别账号，并用该账号 ID 补全 Token", async () => {
@@ -135,6 +137,7 @@ describe("extractSessionFromPage", () => {
       jsonResponse({ success: true, data: { id: 23, username: "session-user" } }),
     );
     fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: "session-token" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: { id: 23 } }));
 
     expect(await extractSessionFromPage()).toMatchObject({
       userId: "23",
@@ -156,6 +159,7 @@ describe("extractSessionFromPage", () => {
       jsonResponse({ success: true, data: { id: 34, username: "cookie-user" } }),
     );
     fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: "cookie-token" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: { id: 34 } }));
 
     expect(await extractSessionFromPage()).toMatchObject({
       userId: "34",
@@ -179,12 +183,13 @@ describe("extractSessionFromPage", () => {
   it("localStorage 数据损坏时仍能读取 sessionStorage", async () => {
     local.set("user", "{broken");
     session.set("user", JSON.stringify({ id: "45", access_token: "valid-token" }));
+    fetchMock.mockImplementation(async () => jsonResponse({ success: true, data: { id: 45 } }));
 
     expect(await extractSessionFromPage()).toMatchObject({
       userId: "45",
       accessToken: "valid-token",
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("业务失败响应中的 data 不能作为账号，也不能触发 Token 生成", async () => {
@@ -206,13 +211,16 @@ describe("extractSessionFromPage", () => {
   it("VoAPI 的 JWT 继续优先使用，不调用 New API 接口", async () => {
     local.set("user", JSON.stringify({ id: 56, username: "voapi" }));
     local.set("userStore", JSON.stringify({ auth: { token: "voapi-jwt" } }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 0, data: { id: 56, username: "voapi" } }));
 
     expect(await extractSessionFromPage()).toMatchObject({
       userId: "56",
       accessToken: "voapi-jwt",
       hasVoapiStore: true,
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/user/info", expect.objectContaining({
+      credentials: "omit", headers: expect.objectContaining({ Authorization: "voapi-jwt" }),
+    }));
   });
 
   it("接口返回的当前账号不同于缓存时，不沿用旧账号的用户名", async () => {
@@ -232,6 +240,7 @@ describe("extractSessionFromPage", () => {
     session.set("user", JSON.stringify({ id: 20, username: "current-user" }));
     fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: { id: 20 } }));
     fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: "current-token" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: { id: 20 } }));
 
     expect(await extractSessionFromPage()).toMatchObject({
       userId: "20",
@@ -272,6 +281,83 @@ describe("extractSessionFromPage", () => {
 
     expect(await result).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("完整旧缓存也必须核验 Cookie 身份，切换账号后不返回旧 Token", async () => {
+    local.set("user", JSON.stringify({ id: 10, username: "old-user", access_token: "old-token" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: { id: 20, access_token: "current-token" } }));
+
+    expect(await extractSessionFromPage()).toMatchObject({ userId: "20", accessToken: "current-token", username: undefined });
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/user/self", expect.objectContaining({
+      credentials: "include", mode: "same-origin", redirect: "error",
+    }));
+    expect(fetchMock.mock.calls[0][1]?.headers).not.toHaveProperty("Authorization");
+  });
+
+  it("Cookie 已失效时，完整缓存与可用旧 Token 不能伪装成当前登录账号", async () => {
+    local.set("user", JSON.stringify({ id: 10, access_token: "old-token" }));
+
+    expect(await extractSessionFromPage()).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([0, -1, 1.5, "abc", "0", null])("拒绝无效的服务端账号 ID：%j", async (id) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: { id, access_token: "token" } }));
+
+    expect(await extractSessionFromPage()).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([401, 200])("缓存 Token 无效或属于其他用户时仅返回已确认身份：%s", async (status) => {
+    local.set("user", JSON.stringify({ id: 12, access_token: "stale-token" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: { id: 12 } }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: status === 200, data: { id: 99 } }, status));
+
+    expect(await extractSessionFromPage()).toMatchObject({ userId: "12", accessToken: undefined });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      credentials: "omit", headers: { Authorization: "Bearer stale-token" },
+    });
+  });
+
+  it("VoAPI 服务端身份优先于缓存 ID，过期 JWT 不能生成识别结果", async () => {
+    local.set("user", JSON.stringify({ id: 10 }));
+    local.set("userStore", JSON.stringify({ auth: { token: "voapi-jwt" } }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 0, data: { id: 20 } }));
+    expect(await extractSessionFromPage()).toMatchObject({ userId: "20", hasVoapiStore: true });
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 2, msg: "JWT expired", data: { id: 20 } }));
+    expect(await extractSessionFromPage()).toBeNull();
+  });
+
+  it.each(["navigation", "session"])("核验过程中 %s 变化时丢弃旧响应", async (change) => {
+    fetchMock.mockImplementationOnce(async () => {
+      if (change === "navigation") vi.stubGlobal("location", new URL("https://other.example.com"));
+      else session.set("user", JSON.stringify({ id: 99 }));
+      return jsonResponse({ success: true, data: { id: 12, access_token: "token" } });
+    });
+
+    expect(await extractSessionFromPage()).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("注入前已跳转到其他站点时不发请求", async () => {
+    expect(await extractSessionFromPage("https://other.example.com")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("响应体不响应取消时也按总期限结束，清理计时器", async () => {
+    vi.useFakeTimers();
+    const response = jsonResponse({});
+    vi.spyOn(response, "json").mockImplementation(() => new Promise(() => {}));
+    fetchMock.mockResolvedValueOnce(response);
+
+    const result = extractSessionFromPage();
+    await vi.advanceTimersByTimeAsync(8000);
+
+    expect(await result).toBeNull();
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
 });

@@ -149,6 +149,7 @@ export function fromDetected(d: DetectedAccount): FormState {
  * 并清除过期标记（重新识别意味着登录态已刷新）。带 id 走更新而非新建。
  */
 export function mergeDetectedIntoAccount(existing: Account, d: DetectedAccount): FormState {
+  if (existing.url !== d.url || existing.userId !== d.userId) return toForm(existing);
   const base = toForm(existing);
   return {
     ...base,
